@@ -1,0 +1,33 @@
+[package]
+name = "roper2"
+version = "0.2.0"
+authors = ["oblivia simplex <oblivia@paranoici.org>"]
+build = "build.rs"
+
+[lib]
+name = "libroper"
+path = "src/lib.rs"
+
+[[bin]]
+name = "roper"
+path = "src/bin/roper.rs"
+
+[dependencies]
+#unicorn = { git = "https://github.com/oblivia-simplex/unicorn-rs", branch = "master" }
+unicorn = { git = "https://github.com/ekse/unicorn-rs", branch = "master" } #"0.8.0"
+libunicorn-sys = { git = "https://github.com/ekse/unicorn-rs", branch = "master" }
+ketos = "0.10.0"
+ketos_derive = "0.10.0"
+goblin = "0.0.14"
+capstone-sys = "0.7.0"
+capstone = "0.3.1"
+getopts = "0.2.17"
+rand = "0.5.0-pre.1"
+lazy_static = "0.2.8"
+# bap = "0.1.0"
+# bap-sys = "0.1.0"
+rayon = "1.0.1"
+hexdump = "0.1.0"
+evmap = "4.0.0"
+chan-signal = "0.3.1"
+num = "0.1.42"

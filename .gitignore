@@ -1,0 +1,12 @@
+*.md
+core
+*.swp
+~*
+*#
+elfs/
+*.bak
+*.bk
+auto/
+*/auto/
+target/
+dependencies/
