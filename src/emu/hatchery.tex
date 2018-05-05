@@ -1,4 +1,4 @@
-% Created 2018-05-04 Fri 11:47
+% Created 2018-05-04 Fri 23:01
 % Intended LaTeX compiler: pdflatex
 \documentclass[11pt]{article}
 \usepackage[utf8]{inputenc}
@@ -16,7 +16,7 @@
 \usepackage{hyperref}
 \usepackage{listings}
 \usepackage[hidelinks]{hyperref}
-\input{../lit-header}
+\input{lit-header}
 \date{\today}
 \title{The ROPER 2 Hatchery}
 \hypersetup{
@@ -33,38 +33,36 @@
 
 
 \section{The Hatchery}
-\label{sec:org256085f}
+\label{sec:orgc34bf46}
 
 The hatchery module of \gls{roper2} consists of two logical components: a
 mechanism for performing "\gls{rop} chain embryogenesis", which maps genotypes to
 phenotypes so as to prepare them for fitness evaluation and selection (\S
-\ref{org8ffef8d}), and a mechanism to handle the concurrency plumbing for the
+\ref{org83683e4}), and a mechanism to handle the concurrency plumbing for the
 system -- setting up multiple \texttt{unicorn} emulator instances on separate, looping
 threads, with which the rest the system can communicate through a network of
-\texttt{channels}. 
+\texttt{channels} (\S \ref{org6f6b7f4}). 
 
 \subsection{ROP-chain embryogenesis}
-\label{sec:orge1f120f}
-\label{org8ffef8d}
+\label{sec:orge1bec7e}
+\label{org83683e4}
 
-\lstset{language=rust,label=org413efbd,caption= ,captionpos=b,numbers=none}
+Like its predecessor, \gls{roper}, \gls{roper2} maintains distinctions between
+genotype and phenotype, on the one hand, and between phenotype and fitness,
+on the other. The \emph{phenotype} of an individual, in this context, is its
+behaviour during execution. Execution, here, is provided by an emulated
+\gls{cpu}, into which an executable binary has already been loaded (the
+loading is handled by the \texttt{emu::loader} module, documented in \url{loader.rs}).
+The individual's \emph{genotype} is serialized into its "natural form" -- a
+stack of addresses and machine words, which either dereference to locations
+in executable memory (ideally, to \emph{gadgets}) or exist to provide raw numerical
+material to be used by the instructions dereferenced. It then loaded into
+the CPU's stack memory, and the first address is popped into the \gls{pc}, 
+just as it would be in a "stack smashing" attack. The emulator is fired up,
+and everything proceeds just as it would in a "wild" \gls{rop} attack.  
+
+\lstset{language=rust,label=orge748246,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
-/* I think some of this data cloning could be optimized away. FIXME */
-#[inline]
-pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine) -> gen::Phenome {
-    let mut map = gen::Phenome::new();
-    {
-        let mut inputs: Vec<gen::Input> = creature.phenome.keys().map(|x| x.clone()).collect();
-        while inputs.len() > 0 {
-            let input = inputs.pop().unwrap();
-            /* This can't really be threaded, due to the unsendability of emu */
-            let pod = hatch(creature, &input, emu);
-            map.insert(input.to_vec(), Some(pod));
-        }
-    }
-    map
-}
-
 #[inline]
 pub fn hatch(creature: &mut gen::Creature, input: &gen::Input, emu: &mut Engine) -> gen::Pod {
     let mut payload = creature.genome.pack(input);
@@ -77,138 +75,235 @@ pub fn hatch(creature: &mut gen::Creature, input: &gen::Input, emu: &mut Engine)
     payload.truncate(stack_size / 2);
     let _payload_len = payload.len();
     let stack_entry = stack_addr + (stack_size / 2) as u64;
-    /* save writeable regions **/
+    emu.restore_state();
 
     /* load payload **/
-    emu.restore_state();
     emu.mem_write(stack_entry, &payload)
         .expect("mem_write fail in hatch");
     emu.set_sp(stack_entry + *ADDR_WIDTH as u64);
 
-    let visitor: Rc<RefCell<Vec<VisitRecord>>> = Rc::new(RefCell::new(Vec::new()));
-    let writelog = Rc::new(RefCell::new(Vec::new()));
-    let retlog = Rc::new(RefCell::new(Vec::new()));
-    let jmplog = Rc::new(RefCell::new(Vec::new()));
+  <<attach hooks for tracking performance>>
 
-    let mem_write_hook = {
-        let writelog = writelog.clone();
-        let callback = move |uc: &unicorn::Unicorn,
-                             _memtype: unicorn::MemType,
-                             addr: u64,
-                             size: usize,
-                             val: i64| {
-            let mut wmut = writelog.borrow_mut();
-            let pc = read_pc(uc).unwrap();
-            let write_record = WriteRecord {
-                pc: pc,
-                dest_addr: addr,
-                value: val as u64,
-                size: size,
-            };
-            wmut.push(write_record);
-            true
-        };
-        emu.hook_writeable_mem(callback)
-    };
-
-    let visit_hook = {
-        let visitor = visitor.clone();
-        let callback = move |uc: &unicorn::Unicorn, addr: u64, size: u32| {
-            let mut vmut = visitor.borrow_mut();
-            let mode = get_mode(&uc);
-            let size: usize = (size & 0xF) as usize;
-            let registers = uc_general_registers(&uc).unwrap();
-            let visit_record = VisitRecord {
-                pc: addr,
-                mode: mode,
-                inst_size: size,
-                registers: registers,
-            };
-            vmut.push(visit_record);
-        };
-        emu.hook_exec_mem(callback)
-    };
-
-    let ret_hook = {
-        let retlog = retlog.clone();
-        let callback = move |_uc: &unicorn::Unicorn, addr: u64, _size: u32| {
-            let mut retlog = retlog.borrow_mut();
-            let pc = addr;
-            retlog.push(pc);
-        };
-        emu.hook_rets(callback)
-    };
-
-    let indirect_jump_hook = {
-        let jmplog = jmplog.clone();
-        let callback = move |_uc: &unicorn::Unicorn, addr: u64, _size: u32| {
-            let mut jmplog = jmplog.borrow_mut();
-            jmplog.push(addr);
-        };
-        emu.hook_indirect_jumps(callback)
-    };
-
-    /* Hatch! **/
- /* FIXME don't hardcode these params */
     let _res = emu.start(start_addr, 0, 0, 1024);
 
-    /* Now, clean up the hooks */
-    match visit_hook {
-        Ok(h) => {
-            emu.remove_hook(h).unwrap();
-        }
-        Err(e) => {
-            println!("visit_hook didn't take {:?}", e);
-        }
-    }
-    match mem_write_hook {
-        Ok(h) => {
-            emu.remove_hook(h).unwrap();
-        }
-        Err(e) => {
-            println!("mem_write_hook didn't take {:?}", e);
-        }
-    }
-    match ret_hook {
-        Ok(h) => {
-            emu.remove_hook(h).unwrap();
-        }
-        Err(e) => {
-            println!("ret_hook didn't take: {:?}", e);
-        }
-    }
-    match indirect_jump_hook {
-        Ok(h) => {
-            emu.remove_hook(h).unwrap();
-        }
-        Err(e) => {
-            println!("indirect_jmp_hook didn't take: {:?}", e);
-        }
-    }
-
-    /* Now, get the resulting CPU context (the "phenotype"), and
-     * encase it in a Pod structure.
-     */
-    let registers = emu.read_general_registers().unwrap();
-    let vtmp = visitor.clone();
-    let visited = vtmp.borrow().to_vec().clone();
-    let wtmp = writelog.clone();
-    let writelog = wtmp.borrow().to_vec().clone();
-    let rtmp = retlog.clone();
-    let retlog = rtmp.borrow().to_vec().clone();
-    drop(vtmp);
-    drop(wtmp);
+  <<clean up the hooks>>
 
     let pod = gen::Pod::new(registers, visited, writelog, retlog);
     pod
 }
 \end{lstlisting}
 
-\subsection{Concurrency plumbing}
-\label{sec:org7349e1d}
-\lstset{language=rust,label=orgb825d8e,caption= ,captionpos=b,numbers=none}
+\subsubsection{Hooks for behavioural analysis}
+\label{sec:org7972d7f}
+The phenotype -- or, rather, that aspect of the phenotype that developed
+\footnote{In the sense of an embryo, or a photograph.} in this particular execution
+-- is then returned in the form of a \texttt{Pod} struct. The fields you see being
+passed to the \texttt{Pod} constructor, here, are populated by a series of functions
+that have been hooked into the emulator, using \texttt{Unicorn}'s hook API. (The
+\texttt{Engine} struct you see at work, here, in \texttt{hatch()}, is defined in the
+\texttt{emu::loader} module as well. It is more or less just a convenient 
+encapsulation of a \texttt{Unicorn} \gls{cpu} emulator, tailored to ROPER2's needs.)
+
+The hooks are constrained, in type, in two important ways: they must be
+\texttt{'static} closures, implementing the \texttt{Fn} trait, and their signature is
+fixed in advance. They can mutate data when they are called, so long as
+that data has been suitably massaged into reference-counting, internally
+mutable cells, but they can't return values. 
+
+The list of hooks used is almost certain to grow, but for the time being
+they collect data pertaining to
+\begin{itemize}
+\item the execution path of the phenotype through memory, in the form of
+a vector of addresses visited, along with some useful information
+concerning the size of the instructions executed (to facilitate
+disassembly, when we come to analyse that path) and the hardware
+mode (which, in some \glspl{isa}, such as \gls{arm}, can change at
+runtime);
+\item the \emph{return} instructions hit. This could be gleaned from the
+execution path, but it's much more efficient to track the information
+separately. Return-type instructions are of special interest, since
+they represent the most basic form by which a \gls{rop} chain can
+maintain control over complex execution flows. This is information
+that we can profitably put to use in the fitness functions.
+\item the valid \emph{writes} performed by the individual, tracked by instruction
+address, the destination address of the write, and the size of the
+data written.
+\end{itemize}
+
+\lstset{language=rust,label=org9f41a42,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
-fn spawn_coop(rx: Receiver<gen::Creature>, tx: Sender<gen::Creature>) -> () {
+let visitor: Rc<RefCell<Vec<VisitRecord>>> = Rc::new(RefCell::new(Vec::new()));
+let writelog = Rc::new(RefCell::new(Vec::new()));
+let retlog = Rc::new(RefCell::new(Vec::new()));
+let jmplog = Rc::new(RefCell::new(Vec::new()));
+
+let mem_write_hook = {
+    let writelog = writelog.clone();
+    let callback = move |uc: &unicorn::Unicorn,
+                         _memtype: unicorn::MemType,
+                         addr: u64,
+                         size: usize,
+                         val: i64| {
+        let mut wmut = writelog.borrow_mut();
+        let pc = read_pc(uc).unwrap();
+        let write_record = WriteRecord {
+            pc: pc,
+            dest_addr: addr,
+            value: val as u64,
+            size: size,
+        };
+        wmut.push(write_record);
+        true
+    };
+    emu.hook_writeable_mem(callback)
+};
+
+let visit_hook = {
+    let visitor = visitor.clone();
+    let callback = move |uc: &unicorn::Unicorn, addr: u64, size: u32| {
+        let mut vmut = visitor.borrow_mut();
+        let mode = get_mode(&uc);
+        let size: usize = (size & 0xF) as usize;
+        let registers = uc_general_registers(&uc).unwrap();
+        let visit_record = VisitRecord {
+            pc: addr,
+            mode: mode,
+            inst_size: size,
+            registers: registers,
+        };
+        vmut.push(visit_record);
+    };
+    emu.hook_exec_mem(callback)
+};
+
+let ret_hook = {
+    let retlog = retlog.clone();
+    let callback = move |_uc: &unicorn::Unicorn, addr: u64, _size: u32| {
+        let mut retlog = retlog.borrow_mut();
+        let pc = addr;
+        retlog.push(pc);
+    };
+    emu.hook_rets(callback)
+};
+
+let indirect_jump_hook = {
+    let jmplog = jmplog.clone();
+    let callback = move |_uc: &unicorn::Unicorn, addr: u64, _size: u32| {
+        let mut jmplog = jmplog.borrow_mut();
+        jmplog.push(addr);
+    };
+    emu.hook_indirect_jumps(callback)
+};
+\end{lstlisting}
+
+After the execution, we need to clean up the hooks, since they interact
+with data structures that will soon be falling out of scope, and we don't
+want that data to be unnecessarily held in memory, or to have an accumulating
+series of hooks cluttering up and slowing down execution in subsequent runs.
+
+\lstset{language=rust,label=org4af4e69,caption= ,captionpos=b,numbers=none}
+\begin{lstlisting}
+/* Now, clean up the hooks */
+match visit_hook {
+    Ok(h) => {
+        emu.remove_hook(h).unwrap();
+    }
+    Err(e) => {
+        println!("visit_hook didn't take {:?}", e);
+    }
+}
+match mem_write_hook {
+    Ok(h) => {
+        emu.remove_hook(h).unwrap();
+    }
+    Err(e) => {
+        println!("mem_write_hook didn't take {:?}", e);
+    }
+}
+match ret_hook {
+    Ok(h) => {
+        emu.remove_hook(h).unwrap();
+    }
+    Err(e) => {
+        println!("ret_hook didn't take: {:?}", e);
+    }
+}
+match indirect_jump_hook {
+    Ok(h) => {
+        emu.remove_hook(h).unwrap();
+    }
+    Err(e) => {
+        println!("indirect_jmp_hook didn't take: {:?}", e);
+    }
+}
+
+/* Get the behavioural data from the mutable vectors */
+let registers = emu.read_general_registers().unwrap();
+let vtmp = visitor.clone();
+let visited = vtmp.borrow().to_vec().clone();
+let wtmp = writelog.clone();
+let writelog = wtmp.borrow().to_vec().clone();
+let rtmp = retlog.clone();
+let retlog = rtmp.borrow().to_vec().clone();
+\end{lstlisting}
+
+\subsubsection{Dealing with multiple problem cases}
+\label{sec:org1cbea6f}
+
+Depending on the task at hand, the phenotypic profile that we're
+interested in evaluating may need to include the responses of the
+individual to a variety of inputs, exemplars, environmental states,
+etc. It's simple enough to treat cases where the problem space \emph{isn't}
+multiple as a singleton, and so it fits comfortably enough within
+this scheme. 
+
+The \texttt{hatch} function is therefore dispatched by another, called
+\texttt{hatch\_cases}, which is little more than a \texttt{while} loop, iterating
+over the various problem cases associated with the task or environment
+of interest.
+
+Since the \texttt{Unicorn} emulator is a foreign struct, implemented in \textbf{C},
+there's no easy way to thread this portion of the program. Forcing an
+implementation of the \texttt{Send} trait on this struct may expose us to
+various race conditions, and other unsafe hazards. 
+
+\lstset{language=rust,label=orgd3a88fa,caption= ,captionpos=b,numbers=none}
+\begin{lstlisting}
+#[inline]
+pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine) 
+                   -> gen::Phenome {
+    let mut map = gen::Phenome::new();
+    {
+        let mut inputs: Vec<gen::Input> = 
+            creature.phenome.keys().map(|x| x.clone()).collect();
+        while inputs.len() > 0 {
+            let input = inputs.pop().unwrap();
+            /* This can't really be threaded, due to the unsendability of emu */
+            let pod = hatch(creature, &input, emu);
+            map.insert(input.to_vec(), Some(pod));
+        }
+    }
+    map
+}
+\end{lstlisting}
+
+\subsection{Concurrency plumbing}
+\label{sec:org681376b}
+\label{org6f6b7f4}
+
+We can nevertheless make great gains in efficiency by spinning
+up a set of threads at the beginning of each evaluation phase,
+and binding an \texttt{Engine} instance to each thread's scope. The 
+main loop of each of those threads is implemented by the function,
+\texttt{spawn\_coop}. Rather than collect and return a vector of results
+from these evaluations, \texttt{spawn\_coop} maintains a line of communication
+back to the caller of the function that called it, in the form of
+a \texttt{channel} (specifically, a \texttt{Creature} \texttt{channel}). 
+
+\lstset{language=rust,label=org39966cb,caption= ,captionpos=b,numbers=none}
+\begin{lstlisting}
+fn spawn_coop(rx: Receiver<gen::Creature>, 
+              tx: Sender<gen::Creature>) -> () {
     /* a thread-local emulator */
     let mut emu = Engine::new(*ARCHITECTURE);
 
@@ -221,7 +316,13 @@ fn spawn_coop(rx: Receiver<gen::Creature>, tx: Sender<gen::Creature>) -> () {
         tx.send(creature); /* goes back to the thread that called spawn_hatchery */
     }
 }
+\end{lstlisting}
 
+The threads are spawned and dispatched by another looping
+thread, which is spawned, in turn, by the \texttt{spawn\_hatchery} function.
+
+\lstset{language=rust,label=org1d4aba8,caption= ,captionpos=b,numbers=none}
+\begin{lstlisting}
 /* An expect of 0 will cause this loop to run indefinitely */
 pub fn spawn_hatchery(
     num_engines: usize,
@@ -234,8 +335,6 @@ pub fn spawn_hatchery(
     let (from_hatch_tx, from_hatch_rx) = channel();
     let (into_hatch_tx, into_hatch_rx) = channel();
 
-    /* think of ways to dynamically scale the workload, using a more
-     * sophisticated data structure than a circular buffer for carousel */
     let handle = spawn(move || {
         let mut carousel = Vec::new();
 
@@ -263,7 +362,7 @@ pub fn spawn_hatchery(
         /* clean up the carousel */
         while carousel.len() > 0 {
             if let Some((tx, h)) = carousel.pop() {
-                drop(tx); /* there we go. that stops the hanging */
+                drop(tx); 
                 h.join();
             };
         }
@@ -273,39 +372,45 @@ pub fn spawn_hatchery(
 }
 \end{lstlisting}
 
-\subsection{Hatchery dependencies}
-\label{sec:org8b7a87c}
-\lstset{language=rust,label=orgdf2599f,caption= ,captionpos=b,numbers=none}
-\begin{lstlisting}
-// #![feature(fnbox)]
-extern crate capstone;
-extern crate hexdump;
-extern crate rand;
-extern crate rayon;
-extern crate unicorn;
+This function returns almost immediately when called, 
+bearing three values to its caller: 
 
-//use std::boxed::FnBox;
-use std::thread::{sleep, spawn, JoinHandle};
+\begin{itemize}
+\item \texttt{into\_hatch\_tx}, which is the \texttt{Sender} end of a channel that can be used 
+to transmit individuals (of type \texttt{Creature}, which at the time of arrival 
+are little more than genomes in hollow shells, whose phenotypes have not 
+yet been brought to maturity) to the \emph{genome \(\rightarrow\) phenome map}
+\item \texttt{from\_hatch\_rx}, which is the channel on which the caller (or some thread
+delegated by the caller) listens for the creatures to return, now developed
+into mature phenotypes,
+\item \texttt{handle}, the \texttt{JoinHandle} of the thread, which will be used to join the
+main hatchery thread.
+\end{itemize}
+
+\subsection{Hatchery dependencies}
+\label{sec:orgc4228f6}
+\lstset{language=rust,label=org7ff0a83,caption= ,captionpos=b,numbers=none}
+\begin{lstlisting}
+extern crate unicorn; use std::thread::{sleep, spawn, JoinHandle}; 
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::time::Duration;
-//use self::rayon::prelude::*;
-
 use emu::loader::{get_mode, read_pc, uc_general_registers, Engine};
 use par::statics::*;
 use gen;
 use gen::phenotype::{VisitRecord, WriteRecord};
-// use log;
 \end{lstlisting}
 
 
 \subsection{Putting things together}
-\label{sec:org5250685}
-\lstset{language=rust,label=org443e1b5,caption= ,captionpos=b,numbers=none}
+\label{sec:org76650f9}
+\lstset{language=rust,label=org80b2ba2,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 <<hatchery dependencies>>
-<<concurrency plumbing>>
+<<spawn hatchery>>
+<<spawn coop>>
+<<hatch>>
 <<ROP-chain embryogenesis>>
 \end{lstlisting}
 \end{document}

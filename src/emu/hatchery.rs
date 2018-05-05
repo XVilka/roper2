@@ -1,24 +1,15 @@
-// [[file:~/ROPER/roper-redux/src/emu/hatchery.org::putting%20things%20together][putting things together]]
-// #![feature(fnbox)]
-extern crate capstone;
-extern crate hexdump;
-extern crate rand;
-extern crate rayon;
+// [[file:~/Projects/roper2/src/emu/hatchery.org::putting%20things%20together][putting things together]]
 extern crate unicorn;
-
-//use std::boxed::FnBox;
 use std::thread::{sleep, spawn, JoinHandle};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::time::Duration;
-//use self::rayon::prelude::*;
 
 use emu::loader::{get_mode, read_pc, uc_general_registers, Engine};
 use par::statics::*;
 use gen;
 use gen::phenotype::{VisitRecord, WriteRecord};
-// use log;
 fn spawn_coop(rx: Receiver<gen::Creature>, tx: Sender<gen::Creature>) -> () {
     /* a thread-local emulator */
     let mut emu = Engine::new(*ARCHITECTURE);

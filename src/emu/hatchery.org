@@ -1,4 +1,4 @@
-#+LATEX_HEADER: \input{../lit-header}
+#+LATEX_HEADER: \input{lit-header}
 #+TITLE: The ROPER 2 Hatchery
 #+OPTIONS: ^:{}
 
@@ -10,29 +10,27 @@ phenotypes so as to prepare them for fitness evaluation and selection (\S
 [[sec:embryogenesis]]), and a mechanism to handle the concurrency plumbing for the
 system -- setting up multiple ~unicorn~ emulator instances on separate, looping
 threads, with which the rest the system can communicate through a network of
-~channels~. 
+~channels~ (\S [[sec:plumbing]]). 
 
 ** ROP-chain embryogenesis
 <<sec:embryogenesis>>
 
-#+NAME: ROP-chain embryogenesis
-#+BEGIN_SRC rust :export none :comments link
-  /* I think some of this data cloning could be optimized away. FIXME */
-  #[inline]
-  pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine) -> gen::Phenome {
-      let mut map = gen::Phenome::new();
-      {
-          let mut inputs: Vec<gen::Input> = creature.phenome.keys().map(|x| x.clone()).collect();
-          while inputs.len() > 0 {
-              let input = inputs.pop().unwrap();
-              /* This can't really be threaded, due to the unsendability of emu */
-              let pod = hatch(creature, &input, emu);
-              map.insert(input.to_vec(), Some(pod));
-          }
-      }
-      map
-  }
+Like its predecessor, gls:roper, gls:roper2 maintains distinctions between
+genotype and phenotype, on the one hand, and between phenotype and fitness,
+on the other. The /phenotype/ of an individual, in this context, is its
+behaviour during execution. Execution, here, is provided by an emulated
+gls:cpu, into which an executable binary has already been loaded (the
+loading is handled by the ~emu::loader~ module, documented in [[file:loader.rs]]).
+The individual's /genotype/ is serialized into its "natural form" -- a
+stack of addresses and machine words, which either dereference to locations
+in executable memory (ideally, to /gadgets/) or exist to provide raw numerical
+material to be used by the instructions dereferenced. It then loaded into
+the CPU's stack memory, and the first address is popped into the gls:pc, 
+just as it would be in a "stack smashing" attack. The emulator is fired up,
+and everything proceeds just as it would in a "wild" gls:rop attack.  
 
+#+NAME: hatch
+#+BEGIN_SRC rust :export none :comments link :noweb tangle 
   #[inline]
   pub fn hatch(creature: &mut gen::Creature, input: &gen::Input, emu: &mut Engine) -> gen::Pod {
       let mut payload = creature.genome.pack(input);
@@ -45,14 +43,60 @@ threads, with which the rest the system can communicate through a network of
       payload.truncate(stack_size / 2);
       let _payload_len = payload.len();
       let stack_entry = stack_addr + (stack_size / 2) as u64;
-      /* save writeable regions **/
+      emu.restore_state();
 
       /* load payload **/
-      emu.restore_state();
       emu.mem_write(stack_entry, &payload)
           .expect("mem_write fail in hatch");
       emu.set_sp(stack_entry + *ADDR_WIDTH as u64);
 
+    <<attach hooks for tracking performance>>
+
+      let _res = emu.start(start_addr, 0, 0, 1024);
+
+    <<clean up the hooks>>
+
+      let pod = gen::Pod::new(registers, visited, writelog, retlog);
+      pod
+  }
+#+END_SRC
+
+*** Hooks for behavioural analysis
+The phenotype -- or, rather, that aspect of the phenotype that developed
+[fn:: In the sense of an embryo, or a photograph.] in this particular execution
+-- is then returned in the form of a ~Pod~ struct. The fields you see being
+passed to the ~Pod~ constructor, here, are populated by a series of functions
+that have been hooked into the emulator, using ~Unicorn~'s hook API. (The
+~Engine~ struct you see at work, here, in ~hatch()~, is defined in the
+~emu::loader~ module as well. It is more or less just a convenient 
+encapsulation of a ~Unicorn~ gls:cpu emulator, tailored to ROPER2's needs.)
+
+The hooks are constrained, in type, in two important ways: they must be
+~'static~ closures, implementing the ~Fn~ trait, and their signature is
+fixed in advance. They can mutate data when they are called, so long as
+that data has been suitably massaged into reference-counting, internally
+mutable cells, but they can't return values. 
+
+The list of hooks used is almost certain to grow, but for the time being
+they collect data pertaining to
+- the execution path of the phenotype through memory, in the form of
+  a vector of addresses visited, along with some useful information
+  concerning the size of the instructions executed (to facilitate
+  disassembly, when we come to analyse that path) and the hardware
+  mode (which, in some glspl:isa, such as gls:arm, can change at
+  runtime);
+- the /return/ instructions hit. This could be gleaned from the
+  execution path, but it's much more efficient to track the information
+  separately. Return-type instructions are of special interest, since
+  they represent the most basic form by which a gls:rop chain can
+  maintain control over complex execution flows. This is information
+  that we can profitably put to use in the fitness functions. 
+- the valid /writes/ performed by the individual, tracked by instruction
+  address, the destination address of the write, and the size of the
+  data written. 
+
+#+NAME: attach hooks for tracking performance
+#+BEGIN_SRC rust :export none
       let visitor: Rc<RefCell<Vec<VisitRecord>>> = Rc::new(RefCell::new(Vec::new()));
       let writelog = Rc::new(RefCell::new(Vec::new()));
       let retlog = Rc::new(RefCell::new(Vec::new()));
@@ -115,67 +159,114 @@ threads, with which the rest the system can communicate through a network of
           };
           emu.hook_indirect_jumps(callback)
       };
+#+END_SRC
 
-      /* Hatch! **/
-   /* FIXME don't hardcode these params */
-      let _res = emu.start(start_addr, 0, 0, 1024);
+After the execution, we need to clean up the hooks, since they interact
+with data structures that will soon be falling out of scope, and we don't
+want that data to be unnecessarily held in memory, or to have an accumulating
+series of hooks cluttering up and slowing down execution in subsequent runs.
 
-      /* Now, clean up the hooks */
-      match visit_hook {
-          Ok(h) => {
-              emu.remove_hook(h).unwrap();
-          }
-          Err(e) => {
-              println!("visit_hook didn't take {:?}", e);
+#+NAME: clean up the hooks
+#+BEGIN_SRC rust
+        /* Now, clean up the hooks */
+        match visit_hook {
+            Ok(h) => {
+                emu.remove_hook(h).unwrap();
+            }
+            Err(e) => {
+                println!("visit_hook didn't take {:?}", e);
+            }
+        }
+        match mem_write_hook {
+            Ok(h) => {
+                emu.remove_hook(h).unwrap();
+            }
+            Err(e) => {
+                println!("mem_write_hook didn't take {:?}", e);
+            }
+        }
+        match ret_hook {
+            Ok(h) => {
+                emu.remove_hook(h).unwrap();
+            }
+            Err(e) => {
+                println!("ret_hook didn't take: {:?}", e);
+            }
+        }
+        match indirect_jump_hook {
+            Ok(h) => {
+                emu.remove_hook(h).unwrap();
+            }
+            Err(e) => {
+                println!("indirect_jmp_hook didn't take: {:?}", e);
+            }
+        }
+
+        /* Get the behavioural data from the mutable vectors */
+        let registers = emu.read_general_registers().unwrap();
+        let vtmp = visitor.clone();
+        let visited = vtmp.borrow().to_vec().clone();
+        let wtmp = writelog.clone();
+        let writelog = wtmp.borrow().to_vec().clone();
+        let rtmp = retlog.clone();
+        let retlog = rtmp.borrow().to_vec().clone();
+#+END_SRC
+
+*** Dealing with multiple problem cases
+
+Depending on the task at hand, the phenotypic profile that we're
+interested in evaluating may need to include the responses of the
+individual to a variety of inputs, exemplars, environmental states,
+etc. It's simple enough to treat cases where the problem space /isn't/
+multiple as a singleton, and so it fits comfortably enough within
+this scheme. 
+
+The ~hatch~ function is therefore dispatched by another, called
+~hatch_cases~, which is little more than a ~while~ loop, iterating
+over the various problem cases associated with the task or environment
+of interest.
+
+Since the ~Unicorn~ emulator is a foreign struct, implemented in *C*,
+there's no easy way to thread this portion of the program. Forcing an
+implementation of the ~Send~ trait on this struct may expose us to
+various race conditions, and other unsafe hazards. 
+
+#+NAME: hatch cases
+#+BEGIN_SRC rust :export none :comments link
+  #[inline]
+  pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine) 
+                     -> gen::Phenome {
+      let mut map = gen::Phenome::new();
+      {
+          let mut inputs: Vec<gen::Input> = 
+              creature.phenome.keys().map(|x| x.clone()).collect();
+          while inputs.len() > 0 {
+              let input = inputs.pop().unwrap();
+              /* This can't really be threaded, due to the unsendability of emu */
+              let pod = hatch(creature, &input, emu);
+              map.insert(input.to_vec(), Some(pod));
           }
       }
-      match mem_write_hook {
-          Ok(h) => {
-              emu.remove_hook(h).unwrap();
-          }
-          Err(e) => {
-              println!("mem_write_hook didn't take {:?}", e);
-          }
-      }
-      match ret_hook {
-          Ok(h) => {
-              emu.remove_hook(h).unwrap();
-          }
-          Err(e) => {
-              println!("ret_hook didn't take: {:?}", e);
-          }
-      }
-      match indirect_jump_hook {
-          Ok(h) => {
-              emu.remove_hook(h).unwrap();
-          }
-          Err(e) => {
-              println!("indirect_jmp_hook didn't take: {:?}", e);
-          }
-      }
-
-      /* Now, get the resulting CPU context (the "phenotype"), and
-       ,* encase it in a Pod structure.
-       ,*/
-      let registers = emu.read_general_registers().unwrap();
-      let vtmp = visitor.clone();
-      let visited = vtmp.borrow().to_vec().clone();
-      let wtmp = writelog.clone();
-      let writelog = wtmp.borrow().to_vec().clone();
-      let rtmp = retlog.clone();
-      let retlog = rtmp.borrow().to_vec().clone();
-      drop(vtmp);
-      drop(wtmp);
-
-      let pod = gen::Pod::new(registers, visited, writelog, retlog);
-      pod
+      map
   }
 #+END_SRC
 
 ** Concurrency plumbing
-#+NAME: concurrency plumbing
+<<sec:plumbing>>
+
+We can nevertheless make great gains in efficiency by spinning
+up a set of threads at the beginning of each evaluation phase,
+and binding an ~Engine~ instance to each thread's scope. The 
+main loop of each of those threads is implemented by the function,
+~spawn_coop~. Rather than collect and return a vector of results
+from these evaluations, ~spawn_coop~ maintains a line of communication
+back to the caller of the function that called it, in the form of
+a ~channel~ (specifically, a ~Creature~ ~channel~). 
+
+#+NAME: spawn coop
 #+BEGIN_SRC rust :export none :comments link
-  fn spawn_coop(rx: Receiver<gen::Creature>, tx: Sender<gen::Creature>) -> () {
+  fn spawn_coop(rx: Receiver<gen::Creature>, 
+                tx: Sender<gen::Creature>) -> () {
       /* a thread-local emulator */
       let mut emu = Engine::new(*ARCHITECTURE);
 
@@ -188,7 +279,13 @@ threads, with which the rest the system can communicate through a network of
           tx.send(creature); /* goes back to the thread that called spawn_hatchery */
       }
   }
+#+END_SRC
 
+The threads are spawned and dispatched by another looping
+thread, which is spawned, in turn, by the ~spawn_hatchery~ function.
+
+#+NAME: spawn hatchery
+#+BEGIN_SRC rust :export none :comments link
   /* An expect of 0 will cause this loop to run indefinitely */
   pub fn spawn_hatchery(
       num_engines: usize,
@@ -201,8 +298,6 @@ threads, with which the rest the system can communicate through a network of
       let (from_hatch_tx, from_hatch_rx) = channel();
       let (into_hatch_tx, into_hatch_rx) = channel();
 
-      /* think of ways to dynamically scale the workload, using a more
-       ,* sophisticated data structure than a circular buffer for carousel */
       let handle = spawn(move || {
           let mut carousel = Vec::new();
 
@@ -230,7 +325,7 @@ threads, with which the rest the system can communicate through a network of
           /* clean up the carousel */
           while carousel.len() > 0 {
               if let Some((tx, h)) = carousel.pop() {
-                  drop(tx); /* there we go. that stops the hanging */
+                  drop(tx); 
                   h.join();
               };
           }
@@ -240,29 +335,31 @@ threads, with which the rest the system can communicate through a network of
   }
 #+END_SRC
 
+This function returns almost immediately when called, 
+bearing three values to its caller: 
+
+- ~into_hatch_tx~, which is the ~Sender~ end of a channel that can be used 
+  to transmit individuals (of type ~Creature~, which at the time of arrival 
+  are little more than genomes in hollow shells, whose phenotypes have not 
+  yet been brought to maturity) to the /genome \rightarrow phenome map/
+- ~from_hatch_rx~, which is the channel on which the caller (or some thread
+  delegated by the caller) listens for the creatures to return, now developed
+  into mature phenotypes,
+- ~handle~, the ~JoinHandle~ of the thread, which will be used to join the
+  main hatchery thread.
+
 ** Hatchery dependencies
 #+NAME: hatchery dependencies
 #+BEGIN_SRC rust :export none :comments link
-  // #![feature(fnbox)]
-  extern crate capstone;
-  extern crate hexdump;
-  extern crate rand;
-  extern crate rayon;
-  extern crate unicorn;
-
-  //use std::boxed::FnBox;
-  use std::thread::{sleep, spawn, JoinHandle};
+  extern crate unicorn; use std::thread::{sleep, spawn, JoinHandle}; 
   use std::sync::mpsc::{channel, Receiver, Sender};
   use std::rc::Rc;
   use std::cell::RefCell;
   use std::time::Duration;
-  //use self::rayon::prelude::*;
-
   use emu::loader::{get_mode, read_pc, uc_general_registers, Engine};
   use par::statics::*;
   use gen;
   use gen::phenotype::{VisitRecord, WriteRecord};
-  // use log;
 #+END_SRC
 
 
@@ -270,6 +367,8 @@ threads, with which the rest the system can communicate through a network of
 #+NAME: putting things together
 #+BEGIN_SRC rust :export none :tangle hatchery.rs :noweb tangle :comments link
 <<hatchery dependencies>>
-<<concurrency plumbing>>
+<<spawn hatchery>>
+<<spawn coop>>
+<<hatch>>
 <<ROP-chain embryogenesis>>
 #+END_SRC
