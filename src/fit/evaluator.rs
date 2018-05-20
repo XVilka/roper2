@@ -90,9 +90,36 @@ fn slave_eval(
         //                    (creature).into()).unwrap();
         //let fit = f32::from_value_ref(&f).unwrap();
         let fit = 0.5; /* FIXME Placeholder */
-        creature.fitness = Some(vec![fit]);
+        creature.fitness = Some(vec![mean_podwise_fitness(&creature.phenome,
+                                                          basic_retcount_per_pod_ff)]);
+        if creature.fitness.as_ref().unwrap()[0] < 0.5 {
+            println!("{:?}", &creature.fitness);
+        };
         eval_tx.send(creature);
     }
+}
+
+fn mean_podwise_fitness<F>(phenome: &Phenome, ff: F) -> f32
+where
+    F: FnMut(&Option<Pod>) -> f32,
+{
+    let scores = phenome.values()
+        .map(ff)
+        .collect::<Vec<f32>>();
+    scores.iter().sum::<f32>() / scores.len() as f32
+}
+
+/* let's start with something simple: we'll reward the number of
+ * unique returns
+ */
+fn basic_retcount_per_pod_ff(pod: &Option<Pod>) -> f32 {
+    let mut rl = pod.as_ref().unwrap().retlog.clone();
+    rl.sort();
+    rl.dedup();
+    //let upper_bound = 128;
+    //let retscore = usize::min(rl.len(), upper_bound);
+    //retscore as f32 / upper_bound as f32
+    if rl.len() == 0 { 1.0 } else { 1.0 / rl.len() as f32 }
 }
 
 /***

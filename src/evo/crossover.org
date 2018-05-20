@@ -49,7 +49,7 @@ own future crossovers.
           let p1: &Creature = parents[(i + 1) % 2];
           i += 1;
           let mut egg = p0.genome.alleles.clone();
-          let mut sem = &p1.genome.alleles;
+          let sem = &p1.genome.alleles;
           for site in sites.iter() {
               egg[*site] = sem[*site];
           }

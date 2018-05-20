@@ -1,4 +1,4 @@
-% Created 2018-05-04 Fri 11:06
+% Created 2018-05-13 Sun 13:47
 % Intended LaTeX compiler: pdflatex
 \documentclass[11pt]{article}
 \usepackage[utf8]{inputenc}
@@ -24,7 +24,7 @@
  pdftitle={Crossover in ROPER 2},
  pdfkeywords={},
  pdfsubject={},
- pdfcreator={Emacs 25.3.1 (Org mode 9.1.6)}, 
+ pdfcreator={Emacs 25.3.1 (Org mode 9.1.13)}, 
  pdflang={English}}
 \begin{document}
 
@@ -33,14 +33,14 @@
 
 
 \section{Homologous Crossover in ROPER}
-\label{sec:org1edc3bd}
+\label{sec:org2435cb7}
 The idea with the crossover mask (or, as its called in the source code, the
 "\texttt{xbits}") mechanism is this: With each genome we associate a bitmask (for now,
 this is in the form of an unsigned, 64-bit integer, but this is a bit of a
 shortcut -- we'd probably like to let it be as long as the longest possible
 genome). For the first generation, this value is initialized randomly. During
 crossover, the sites of genetic exchange are determined by \emph{combining} (\S
-\ref{org5b8dd2b}) the parents' crossover masks: crossover may occur (only) at
+\ref{orgdc5bcdb}) the parents' crossover masks: crossover may occur (only) at
 those sites (mod 64) where the combined mask has a 1. Every subsequent generation
 will inherit its own crossover masks from another \emph{combination} of its parents'
 masks -- though, as we'll see, there are good reasons for selecting distinct
@@ -49,7 +49,7 @@ to generate the map of potential crossover sites should not necessarily be the
 same operation that generates the masks that the offspring will bring to their
 own future crossovers.
 
-\lstset{language=rust,label=orge2a97d9,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orgf8afb86,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 pub fn homologous_crossover<R>(mother: &Creature,
                                father: &Creature,
@@ -80,7 +80,7 @@ where R: Rng, {
         let p1: &Creature = parents[(i + 1) % 2];
         i += 1;
         let mut egg = p0.genome.alleles.clone();
-        let mut sem = &p1.genome.alleles;
+        let sem = &p1.genome.alleles;
         for site in sites.iter() {
             egg[*site] = sem[*site];
         }
@@ -108,8 +108,8 @@ where R: Rng, {
 \end{lstlisting}
 
 \subsection{Combining the Crossover Masks}
-\label{sec:org99fa4de}
-\label{org5b8dd2b}
+\label{sec:org40b0b1b}
+\label{orgdc5bcdb}
 
 The precise means of combining the \texttt{xbit} vectors is left open to
 experimentation, but a good starting point seems to be bitwise conjunction (the
@@ -141,7 +141,7 @@ incorporated as well: the crossover mask that the child will inherit,
 and share with its siblings, will be a uniform crossover of its
 parents', occasionally perturbed by a single bit-flip mutation.
 
-\lstset{language=rust,label=orgec3617d,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orgaf288d0,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 /// One-point crossover, between two u64s, as bitvectors.
 fn onept_bits<R: Rng>(a: u64, b: u64, rng: &mut R) -> u64 {
@@ -188,7 +188,7 @@ Once the two parents' \texttt{xbits} have been combined into a crossover mask, w
 can use it to generate a list of sites to be used in the genomic crossover
 operation. 
 
-\lstset{language=rust,label=org05132e5,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orgf84c622,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 fn xbits_sites<R: Rng>(
     xbits: u64,
@@ -217,7 +217,7 @@ fn xbits_sites<R: Rng>(
 \end{lstlisting}
 
 \section{Dependencies}
-\label{sec:org5bc43c0}
+\label{sec:org18df41a}
 
 For this to work, we'll need just a handful of dependencies: the pseudo-random
 number generator library in the \texttt{rand} crate, ROPER's own genotype structs in
@@ -227,7 +227,7 @@ a trivial implementation decision, and may change), and a few static parameter
 values that we essentially treat as immutable globals in this project, for
 the sake of convenience, sparing ourselves quite a bit of parameter clutter.
 
-\lstset{language=rust,label=org8930e9a,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orgf84a9fe,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 extern crate rand;
 use self::rand::{Rng};
@@ -237,8 +237,8 @@ use par::statics::*;
 
 
 \section{Putting it Together}
-\label{sec:org4a3d9c6}
-\lstset{language=rust,label=org138f016,caption= ,captionpos=b,numbers=none}
+\label{sec:org372abd9}
+\lstset{language=rust,label=org19708a7,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 <<crossover-module-dependencies>>
 

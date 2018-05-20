@@ -1,4 +1,4 @@
-% Created 2018-05-04 Fri 23:01
+% Created 2018-05-06 Sun 16:03
 % Intended LaTeX compiler: pdflatex
 \documentclass[11pt]{article}
 \usepackage[utf8]{inputenc}
@@ -24,7 +24,7 @@
  pdftitle={The ROPER 2 Hatchery},
  pdfkeywords={},
  pdfsubject={},
- pdfcreator={Emacs 25.3.1 (Org mode 9.1.6)}, 
+ pdfcreator={Emacs 25.3.1 (Org mode 9.1.13)}, 
  pdflang={English}}
 \begin{document}
 
@@ -33,26 +33,26 @@
 
 
 \section{The Hatchery}
-\label{sec:orgc34bf46}
+\label{sec:org1974c72}
 
 The hatchery module of \gls{roper2} consists of two logical components: a
 mechanism for performing "\gls{rop} chain embryogenesis", which maps genotypes to
 phenotypes so as to prepare them for fitness evaluation and selection (\S
-\ref{org83683e4}), and a mechanism to handle the concurrency plumbing for the
+\ref{org7ef42a7}), and a mechanism to handle the concurrency plumbing for the
 system -- setting up multiple \texttt{unicorn} emulator instances on separate, looping
 threads, with which the rest the system can communicate through a network of
-\texttt{channels} (\S \ref{org6f6b7f4}). 
+\texttt{channels} (\S \ref{orgbc48ae6}). 
 
 \subsection{ROP-chain embryogenesis}
-\label{sec:orge1bec7e}
-\label{org83683e4}
+\label{sec:org5b876f7}
+\label{org7ef42a7}
 
 Like its predecessor, \gls{roper}, \gls{roper2} maintains distinctions between
 genotype and phenotype, on the one hand, and between phenotype and fitness,
 on the other. The \emph{phenotype} of an individual, in this context, is its
 behaviour during execution. Execution, here, is provided by an emulated
 \gls{cpu}, into which an executable binary has already been loaded (the
-loading is handled by the \texttt{emu::loader} module, documented in \url{loader.rs}).
+loading is handled by the \texttt{emu::loader} module, documented in \url{loader.org}).
 The individual's \emph{genotype} is serialized into its "natural form" -- a
 stack of addresses and machine words, which either dereference to locations
 in executable memory (ideally, to \emph{gadgets}) or exist to provide raw numerical
@@ -61,40 +61,46 @@ the CPU's stack memory, and the first address is popped into the \gls{pc},
 just as it would be in a "stack smashing" attack. The emulator is fired up,
 and everything proceeds just as it would in a "wild" \gls{rop} attack.  
 
-\lstset{language=rust,label=orge748246,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org14f506a,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
-#[inline]
-pub fn hatch(creature: &mut gen::Creature, input: &gen::Input, emu: &mut Engine) -> gen::Pod {
-    let mut payload = creature.genome.pack(input);
-    let start_addr = creature.genome.entry().unwrap();
-    /* A missing entry point should be considered an error,
-     * since we try to guard against this in our generation
-     * functions.
-     */
-    let (stack_addr, stack_size) = emu.find_stack();
-    payload.truncate(stack_size / 2);
-    let _payload_len = payload.len();
-    let stack_entry = stack_addr + (stack_size / 2) as u64;
-    emu.restore_state();
+<<bring the hatchery's dependencies into scope>>
+<<spawn the main hatchery loop>>
+<<spawn the subsidiary loops to divy up the workload>>
+<<develop phenotypic profiles responding to a range of problem cases>>
+  #[inline]
+  pub fn hatch(creature: &mut gen::Creature, 
+               input: &gen::Input, 
+               emu: &mut Engine) -> gen::Pod {
+      let mut payload = creature.genome.pack(input);
+      let start_addr = creature.genome.entry().unwrap();
+      /* A missing entry point should be considered an error,
+       * since we try to guard against this in our generation
+       * functions.
+       */
+      let (stack_addr, stack_size) = emu.find_stack();
+      payload.truncate(stack_size / 2);
+      let _payload_len = payload.len();
+      let stack_entry = stack_addr + (stack_size / 2) as u64;
+      emu.restore_state();
 
-    /* load payload **/
-    emu.mem_write(stack_entry, &payload)
-        .expect("mem_write fail in hatch");
-    emu.set_sp(stack_entry + *ADDR_WIDTH as u64);
+      /* load payload **/
+      emu.mem_write(stack_entry, &payload)
+          .expect("mem_write fail in hatch");
+      emu.set_sp(stack_entry + *ADDR_WIDTH as u64);
 
-  <<attach hooks for tracking performance>>
+    <<attach hooks for tracking performance>>
 
-    let _res = emu.start(start_addr, 0, 0, 1024);
+      let _res = emu.start(start_addr, 0, 0, 1024);
 
-  <<clean up the hooks>>
+    <<clean up the hooks>>
 
-    let pod = gen::Pod::new(registers, visited, writelog, retlog);
-    pod
-}
+      let pod = gen::Pod::new(registers, visited, writelog, retlog);
+      pod
+  }
 \end{lstlisting}
 
 \subsubsection{Hooks for behavioural analysis}
-\label{sec:org7972d7f}
+\label{sec:org60e11cb}
 The phenotype -- or, rather, that aspect of the phenotype that developed
 \footnote{In the sense of an embryo, or a photograph.} in this particular execution
 -- is then returned in the form of a \texttt{Pod} struct. The fields you see being
@@ -130,78 +136,12 @@ address, the destination address of the write, and the size of the
 data written.
 \end{itemize}
 
-\lstset{language=rust,label=org9f41a42,caption= ,captionpos=b,numbers=none}
-\begin{lstlisting}
-let visitor: Rc<RefCell<Vec<VisitRecord>>> = Rc::new(RefCell::new(Vec::new()));
-let writelog = Rc::new(RefCell::new(Vec::new()));
-let retlog = Rc::new(RefCell::new(Vec::new()));
-let jmplog = Rc::new(RefCell::new(Vec::new()));
-
-let mem_write_hook = {
-    let writelog = writelog.clone();
-    let callback = move |uc: &unicorn::Unicorn,
-                         _memtype: unicorn::MemType,
-                         addr: u64,
-                         size: usize,
-                         val: i64| {
-        let mut wmut = writelog.borrow_mut();
-        let pc = read_pc(uc).unwrap();
-        let write_record = WriteRecord {
-            pc: pc,
-            dest_addr: addr,
-            value: val as u64,
-            size: size,
-        };
-        wmut.push(write_record);
-        true
-    };
-    emu.hook_writeable_mem(callback)
-};
-
-let visit_hook = {
-    let visitor = visitor.clone();
-    let callback = move |uc: &unicorn::Unicorn, addr: u64, size: u32| {
-        let mut vmut = visitor.borrow_mut();
-        let mode = get_mode(&uc);
-        let size: usize = (size & 0xF) as usize;
-        let registers = uc_general_registers(&uc).unwrap();
-        let visit_record = VisitRecord {
-            pc: addr,
-            mode: mode,
-            inst_size: size,
-            registers: registers,
-        };
-        vmut.push(visit_record);
-    };
-    emu.hook_exec_mem(callback)
-};
-
-let ret_hook = {
-    let retlog = retlog.clone();
-    let callback = move |_uc: &unicorn::Unicorn, addr: u64, _size: u32| {
-        let mut retlog = retlog.borrow_mut();
-        let pc = addr;
-        retlog.push(pc);
-    };
-    emu.hook_rets(callback)
-};
-
-let indirect_jump_hook = {
-    let jmplog = jmplog.clone();
-    let callback = move |_uc: &unicorn::Unicorn, addr: u64, _size: u32| {
-        let mut jmplog = jmplog.borrow_mut();
-        jmplog.push(addr);
-    };
-    emu.hook_indirect_jumps(callback)
-};
-\end{lstlisting}
-
 After the execution, we need to clean up the hooks, since they interact
 with data structures that will soon be falling out of scope, and we don't
 want that data to be unnecessarily held in memory, or to have an accumulating
 series of hooks cluttering up and slowing down execution in subsequent runs.
 
-\lstset{language=rust,label=org4af4e69,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orgc08d5e5,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 /* Now, clean up the hooks */
 match visit_hook {
@@ -248,7 +188,7 @@ let retlog = rtmp.borrow().to_vec().clone();
 \end{lstlisting}
 
 \subsubsection{Dealing with multiple problem cases}
-\label{sec:org1cbea6f}
+\label{sec:org65dc3b3}
 
 Depending on the task at hand, the phenotypic profile that we're
 interested in evaluating may need to include the responses of the
@@ -267,29 +207,9 @@ there's no easy way to thread this portion of the program. Forcing an
 implementation of the \texttt{Send} trait on this struct may expose us to
 various race conditions, and other unsafe hazards. 
 
-\lstset{language=rust,label=orgd3a88fa,caption= ,captionpos=b,numbers=none}
-\begin{lstlisting}
-#[inline]
-pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine) 
-                   -> gen::Phenome {
-    let mut map = gen::Phenome::new();
-    {
-        let mut inputs: Vec<gen::Input> = 
-            creature.phenome.keys().map(|x| x.clone()).collect();
-        while inputs.len() > 0 {
-            let input = inputs.pop().unwrap();
-            /* This can't really be threaded, due to the unsendability of emu */
-            let pod = hatch(creature, &input, emu);
-            map.insert(input.to_vec(), Some(pod));
-        }
-    }
-    map
-}
-\end{lstlisting}
-
 \subsection{Concurrency plumbing}
-\label{sec:org681376b}
-\label{org6f6b7f4}
+\label{sec:org76f0196}
+\label{orgbc48ae6}
 
 We can nevertheless make great gains in efficiency by spinning
 up a set of threads at the beginning of each evaluation phase,
@@ -300,77 +220,25 @@ from these evaluations, \texttt{spawn\_coop} maintains a line of communication
 back to the caller of the function that called it, in the form of
 a \texttt{channel} (specifically, a \texttt{Creature} \texttt{channel}). 
 
-\lstset{language=rust,label=org39966cb,caption= ,captionpos=b,numbers=none}
-\begin{lstlisting}
-fn spawn_coop(rx: Receiver<gen::Creature>, 
-              tx: Sender<gen::Creature>) -> () {
-    /* a thread-local emulator */
-    let mut emu = Engine::new(*ARCHITECTURE);
-
-    /* Hatch each incoming creature as it arrives, and send the creature
-     * back to the caller of spawn_hatchery. */
-    for incoming in rx {
-        let mut creature = incoming;
-        let phenome = hatch_cases(&mut creature, &mut emu);
-        creature.phenome = phenome;
-        tx.send(creature); /* goes back to the thread that called spawn_hatchery */
-    }
-}
-\end{lstlisting}
+The concurrency paradigm being used here is more or less "the actor
+model" of concurrency. There is no shared memory, and when one of our
+"actors" (hatcheries or coops) takes possession of a \texttt{Creature}, it
+does so uniquely. No mutexes or reference counters are needed to protect
+the \texttt{Creature} from race conditions, since it never needs to be in the
+hands of two actors at the same time. Instead, we just pass \emph{ownership}
+of the \texttt{Creature} from actor to actor -- and thanks to Rust's exquisite
+ownership system, this is just a matter of transferring a handful of
+machine words. No copying or cloning is needed.\footnote{This is the concurrency model used throughout \gls{roper2}. The only actor
+  that takes a clone of a \texttt{Creature}, rather than temporarily seizing ownership
+  of it, is the \texttt{logger} actor, which performs statistical analysis on the
+  population stream, and logs data to files. This is done so to avoid having
+  the logger's relatively expensive operations block the pipeline, and for
+  this, skimming off a stream of clones is a small price to pay. The upshot,
+  as we'll see, is that the logger needs no return channel. The trip to the 
+  agent is one-way, and the clone is dispensed with afterwards.}
 
 The threads are spawned and dispatched by another looping
 thread, which is spawned, in turn, by the \texttt{spawn\_hatchery} function.
-
-\lstset{language=rust,label=org1d4aba8,caption= ,captionpos=b,numbers=none}
-\begin{lstlisting}
-/* An expect of 0 will cause this loop to run indefinitely */
-pub fn spawn_hatchery(
-    num_engines: usize,
-    expect: usize,
-) -> (
-    Sender<gen::Creature>,
-    Receiver<gen::Creature>,
-    JoinHandle<()>,
-) {
-    let (from_hatch_tx, from_hatch_rx) = channel();
-    let (into_hatch_tx, into_hatch_rx) = channel();
-
-    let handle = spawn(move || {
-        let mut carousel = Vec::new();
-
-        for _ in 0..num_engines {
-            let (eve_tx, eve_rx) = channel();
-            let from_hatch_tx = from_hatch_tx.clone();
-            let h = spawn(move || {
-                spawn_coop(eve_rx, from_hatch_tx);
-            });
-            carousel.push((eve_tx, h));
-        }
-
-        let mut coop = 0;
-        let mut counter = 0;
-        for incoming in into_hatch_rx {
-            let &(ref tx, _) = &carousel[coop];
-            let tx = tx.clone();
-            tx.send(incoming);
-            coop = (coop + 1) % carousel.len();
-            counter += 1;
-            if counter == expect {
-                break;
-            };
-        }
-        /* clean up the carousel */
-        while carousel.len() > 0 {
-            if let Some((tx, h)) = carousel.pop() {
-                drop(tx); 
-                h.join();
-            };
-        }
-    });
-
-    (into_hatch_tx, from_hatch_rx, handle)
-}
-\end{lstlisting}
 
 This function returns almost immediately when called, 
 bearing three values to its caller: 
@@ -387,30 +255,7 @@ into mature phenotypes,
 main hatchery thread.
 \end{itemize}
 
+
 \subsection{Hatchery dependencies}
-\label{sec:orgc4228f6}
-\lstset{language=rust,label=org7ff0a83,caption= ,captionpos=b,numbers=none}
-\begin{lstlisting}
-extern crate unicorn; use std::thread::{sleep, spawn, JoinHandle}; 
-use std::sync::mpsc::{channel, Receiver, Sender};
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::time::Duration;
-use emu::loader::{get_mode, read_pc, uc_general_registers, Engine};
-use par::statics::*;
-use gen;
-use gen::phenotype::{VisitRecord, WriteRecord};
-\end{lstlisting}
-
-
-\subsection{Putting things together}
-\label{sec:org76650f9}
-\lstset{language=rust,label=org80b2ba2,caption= ,captionpos=b,numbers=none}
-\begin{lstlisting}
-<<hatchery dependencies>>
-<<spawn hatchery>>
-<<spawn coop>>
-<<hatch>>
-<<ROP-chain embryogenesis>>
-\end{lstlisting}
+\label{sec:org8458521}
 \end{document}

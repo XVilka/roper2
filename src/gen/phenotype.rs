@@ -141,11 +141,12 @@ impl Display for Creature {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "BIOGRAPHY OF {}\nGENOME:\n{}\nPHENOME:\n{}\n{}",
+            "BIOGRAPHY OF {}\nGENOME:\n{}\nPHENOME:\n{}\n{}\n{:?}",
             self.name,
             self.genome,
             self.disas_visited().join("\t\n"),
-            self.dump_written().join("\t\n")
+            self.dump_written().join("\t\n"),
+            self.fitness
         )
     }
 }
@@ -238,6 +239,13 @@ impl Creature {
             ));
         }
         dump
+    }
+
+    /* returns true if the Creature has hatched -- if its
+     * phenotype has developed -- and false otherwise.
+     */
+    pub fn has_hatched(&self) -> bool {
+        !self.phenome.is_empty()
     }
 }
 

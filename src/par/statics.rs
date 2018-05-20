@@ -1,6 +1,7 @@
 extern crate goblin;
 extern crate num;
 extern crate rand;
+extern crate ini;
 
 use std::fs::File;
 use std::sync::{Arc, RwLock};
@@ -9,51 +10,32 @@ use std::path::Path;
 use std::env;
 use std::fmt;
 
+use self::ini::Ini;
 use self::num::PrimInt;
 use self::goblin::Object;
 use self::goblin::elf::header::machine_to_str;
 
 use emu::loader::{Arch, Mode};
-
-lazy_static! {
-    pub static ref CONFIG_DIR: String
-        = match env::var("ROPER_CONFIG_DIR") {
-                Err(_) => ".roper_config/".to_string(),
-                Ok(d)  => d.to_string(),
-          };
-}
-
-/// Reads the config file specified from the default config directory,
-/// which is ~/ + CONFIG_DIR, and trims any trailing whitespace from
-/// the result.
-fn read_conf(filename: &str) -> String {
-    let mut p = String::new();
-    p.push_str(env::home_dir().unwrap().to_str().unwrap());
-    p.push_str("/");
-    p.push_str(&CONFIG_DIR);
-    p.push_str("/");
-    p.push_str(filename);
-    let path = Path::new(&p);
-    let mut fd = File::open(path).unwrap();
-    let mut txt = String::new();
-    fd.read_to_string(&mut txt).unwrap();
-    while txt.ends_with("\n") || txt.ends_with(" ") || txt.ends_with("\t") {
-        txt.pop();
+    lazy_static! {
+        pub static ref ROPER_INI_PATH: String
+            = match env::var("ROPER_INI_PATH") {
+                    Err(_) => ".roper_config/roper.ini".to_string(),
+                    Ok(d)  => d.to_string(),
+              };
     }
-    txt
+lazy_static! {
+    pub static ref INI: Ini = Ini::load_from_file(&*ROPER_INI_PATH)
+        .expect(&format!("Failed to load init file from {}", &*ROPER_INI_PATH));
 }
-
-#[test]
-fn test_read_conf() {
-    assert_eq!(read_conf(".config_test"), "IT WORKS");
-}
-
 pub type RngSeed = [u8; 32];
 
 lazy_static! {
     pub static ref RNG_SEED: RngSeed /* for Isaac64Rng */
         = {
-            let seed_txt = read_conf("isaac64_seed.txt");
+            let rand_sec = INI.section(Some("Random".to_owned()))
+                .expect("couldn't find [Random] section in ini file");
+            let seed_txt = rand_sec.get("seed")
+                .expect("couldn't get seed field from [Random] section");
             let mut seed_vec = [0u8; 32];
             let mut i = 0;
             for octet in seed_txt.split_whitespace() {
@@ -65,37 +47,28 @@ lazy_static! {
             seed_vec
         };
 }
-
-lazy_static! {
-    pub static ref MUTABLE_RNG_SEED: Arc<RwLock<RngSeed>>
-        = Arc::new(RwLock::new(RNG_SEED.clone()));
-}
-/* Wait: if this is accessed from multiple threads, there will be another
- * source of indeterminacy and unrepeatability: the order of access cannot
- * be assured. So make sure you only access this from a single thread, then
- * pass the seed to each spun thread.
- *
- * Perhaps every thread could just take the base RNG_SEED, and xor it with
- * its own thread id?
- */
-
 lazy_static! {
     pub static ref CODE_BUFFER: Vec<u8>
         = {
             /* first, read the config */
             let bp = match env::var("ROPER_BINARY") {
-                Ok(s)  => s,
-                Err(_) => read_conf("binary_path.txt"),
+                Ok(s)  => s.to_string(),
+                Err(_) => {
+                  INI.section(Some("Binary"))
+                     .expect("Couldn't find Binary section in INI")
+                     .get("path")
+                     .expect("Couldn't find path field in Binary section of INI")
+                     .to_string()
+                }
             };
             //println!("[*] Read binary path as {:?}",bp);
             let path = Path::new(&bp);
-            let mut fd = File::open(path).unwrap();
+            let mut fd = File::open(path).expect(&format!("Can't read binary at {:?}",bp));
             let mut buffer = Vec::new();
             fd.read_to_end(&mut buffer).unwrap();
             buffer
         };
 }
-
 // set addr size here too. dispense with risc_width() calls, which are confused
 lazy_static! {
     pub static ref ARCHITECTURE: Arch

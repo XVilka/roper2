@@ -95,7 +95,7 @@ where R: Rng, {
         let p1: &Creature = parents[(i + 1) % 2];
         i += 1;
         let mut egg = p0.genome.alleles.clone();
-        let mut sem = &p1.genome.alleles;
+        let sem = &p1.genome.alleles;
         for site in sites.iter() {
             egg[*site] = sem[*site];
         }
@@ -107,7 +107,7 @@ where R: Rng, {
         /* The index will be filled in later, prior to filling
          * the graves of the fallen
          */
-        if zygote.entry() != None {
+        if zygote.entry() != None { /* screen out the gadgetless */
             offspring.push(Creature::new(zygote, 0));
         };
         if cfg!(debug_assertions) {

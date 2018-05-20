@@ -20,7 +20,7 @@ genotype and phenotype, on the one hand, and between phenotype and fitness,
 on the other. The /phenotype/ of an individual, in this context, is its
 behaviour during execution. Execution, here, is provided by an emulated
 gls:cpu, into which an executable binary has already been loaded (the
-loading is handled by the ~emu::loader~ module, documented in [[file:loader.rs]]).
+loading is handled by the ~emu::loader~ module, documented in [[file:loader.org]]).
 The individual's /genotype/ is serialized into its "natural form" -- a
 stack of addresses and machine words, which either dereference to locations
 in executable memory (ideally, to /gadgets/) or exist to provide raw numerical
@@ -30,35 +30,41 @@ just as it would be in a "stack smashing" attack. The emulator is fired up,
 and everything proceeds just as it would in a "wild" gls:rop attack.  
 
 #+NAME: hatch
-#+BEGIN_SRC rust :export none :comments link :noweb tangle 
-  #[inline]
-  pub fn hatch(creature: &mut gen::Creature, input: &gen::Input, emu: &mut Engine) -> gen::Pod {
-      let mut payload = creature.genome.pack(input);
-      let start_addr = creature.genome.entry().unwrap();
-      /* A missing entry point should be considered an error,
-       ,* since we try to guard against this in our generation
-       ,* functions.
-       ,*/
-      let (stack_addr, stack_size) = emu.find_stack();
-      payload.truncate(stack_size / 2);
-      let _payload_len = payload.len();
-      let stack_entry = stack_addr + (stack_size / 2) as u64;
-      emu.restore_state();
+#+BEGIN_SRC rust :comments link :tangle hatchery.rs :noweb tangle
+  <<bring the hatchery's dependencies into scope>>
+  <<spawn the main hatchery loop>>
+  <<spawn the subsidiary loops to divy up the workload>>
+  <<develop phenotypic profiles responding to a range of problem cases>>
+    #[inline]
+    pub fn hatch(creature: &mut gen::Creature, 
+                 input: &gen::Input, 
+                 emu: &mut Engine) -> gen::Pod {
+        let mut payload = creature.genome.pack(input);
+        let start_addr = creature.genome.entry().unwrap();
+        /* A missing entry point should be considered an error,
+         ,* since we try to guard against this in our generation
+         ,* functions.
+         ,*/
+        let (stack_addr, stack_size) = emu.find_stack();
+        payload.truncate(stack_size / 2);
+        let _payload_len = payload.len();
+        let stack_entry = stack_addr + (stack_size / 2) as u64;
+        emu.restore_state();
 
-      /* load payload **/
-      emu.mem_write(stack_entry, &payload)
-          .expect("mem_write fail in hatch");
-      emu.set_sp(stack_entry + *ADDR_WIDTH as u64);
+        /* load payload **/
+        emu.mem_write(stack_entry, &payload)
+            .expect("mem_write fail in hatch");
+        emu.set_sp(stack_entry + *ADDR_WIDTH as u64);
 
-    <<attach hooks for tracking performance>>
+      <<attach hooks for tracking performance>>
 
-      let _res = emu.start(start_addr, 0, 0, 1024);
+        let _res = emu.start(start_addr, 0, 0, 1024);
 
-    <<clean up the hooks>>
+      <<clean up the hooks>>
 
-      let pod = gen::Pod::new(registers, visited, writelog, retlog);
-      pod
-  }
+        let pod = gen::Pod::new(registers, visited, writelog, retlog);
+        pod
+    }
 #+END_SRC
 
 *** Hooks for behavioural analysis
@@ -96,7 +102,7 @@ they collect data pertaining to
   data written. 
 
 #+NAME: attach hooks for tracking performance
-#+BEGIN_SRC rust :export none
+#+BEGIN_SRC rust :exports none
       let visitor: Rc<RefCell<Vec<VisitRecord>>> = Rc::new(RefCell::new(Vec::new()));
       let writelog = Rc::new(RefCell::new(Vec::new()));
       let retlog = Rc::new(RefCell::new(Vec::new()));
@@ -231,8 +237,8 @@ there's no easy way to thread this portion of the program. Forcing an
 implementation of the ~Send~ trait on this struct may expose us to
 various race conditions, and other unsafe hazards. 
 
-#+NAME: hatch cases
-#+BEGIN_SRC rust :export none :comments link
+#+NAME: develop phenotypic profiles responding to a range of problem cases
+#+BEGIN_SRC rust :exports none :comments link
   #[inline]
   pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine) 
                      -> gen::Phenome {
@@ -263,8 +269,27 @@ from these evaluations, ~spawn_coop~ maintains a line of communication
 back to the caller of the function that called it, in the form of
 a ~channel~ (specifically, a ~Creature~ ~channel~). 
 
-#+NAME: spawn coop
-#+BEGIN_SRC rust :export none :comments link
+The concurrency paradigm being used here is more or less "the actor
+model" of concurrency. There is no shared memory, and when one of our
+"actors" (hatcheries or coops) takes possession of a ~Creature~, it
+does so uniquely. No mutexes or reference counters are needed to protect
+the ~Creature~ from race conditions, since it never needs to be in the
+hands of two actors at the same time. Instead, we just pass /ownership/
+of the ~Creature~ from actor to actor -- and thanks to Rust's exquisite
+ownership system, this is just a matter of transferring a handful of
+machine words. No copying or cloning is needed.[fn::
+  This is the concurrency model used throughout gls:roper2. The only actor
+  that takes a clone of a ~Creature~, rather than temporarily seizing ownership
+  of it, is the ~logger~ actor, which performs statistical analysis on the
+  population stream, and logs data to files. This is done so to avoid having
+  the logger's relatively expensive operations block the pipeline, and for
+  this, skimming off a stream of clones is a small price to pay. The upshot,
+  as we'll see, is that the logger needs no return channel. The trip to the 
+  agent is one-way, and the clone is dispensed with afterwards.
+]
+
+#+NAME: spawn the subsidiary loops to divy up the workload
+#+BEGIN_SRC rust :exports none :comments link
   fn spawn_coop(rx: Receiver<gen::Creature>, 
                 tx: Sender<gen::Creature>) -> () {
       /* a thread-local emulator */
@@ -284,55 +309,67 @@ a ~channel~ (specifically, a ~Creature~ ~channel~).
 The threads are spawned and dispatched by another looping
 thread, which is spawned, in turn, by the ~spawn_hatchery~ function.
 
-#+NAME: spawn hatchery
-#+BEGIN_SRC rust :export none :comments link
-  /* An expect of 0 will cause this loop to run indefinitely */
-  pub fn spawn_hatchery(
-      num_engines: usize,
-      expect: usize,
-  ) -> (
-      Sender<gen::Creature>,
-      Receiver<gen::Creature>,
-      JoinHandle<()>,
-  ) {
-      let (from_hatch_tx, from_hatch_rx) = channel();
-      let (into_hatch_tx, into_hatch_rx) = channel();
+#+NAME: spawn the main hatchery loop
+#+BEGIN_SRC rust :exports none :comments link
+    /* An expect of 0 will cause this loop to run indefinitely */
+    pub fn spawn_hatchery(
+        num_engines: usize,
+        expect: usize,
+    ) -> (
+        Sender<gen::Creature>,
+        Receiver<gen::Creature>,
+        JoinHandle<()>,
+    ) {
+        let (from_hatch_tx, from_hatch_rx) = channel();
+        let (into_hatch_tx, into_hatch_rx) = channel();
 
-      let handle = spawn(move || {
-          let mut carousel = Vec::new();
+        let handle = spawn(move || {
+            let mut carousel = Vec::new();
 
-          for _ in 0..num_engines {
-              let (eve_tx, eve_rx) = channel();
-              let from_hatch_tx = from_hatch_tx.clone();
-              let h = spawn(move || {
-                  spawn_coop(eve_rx, from_hatch_tx);
-              });
-              carousel.push((eve_tx, h));
-          }
+            for _ in 0..num_engines {
+                let (eve_tx, eve_rx) = channel();
+                let from_hatch_tx = from_hatch_tx.clone();
+                let h = spawn(move || {
+                    spawn_coop(eve_rx, from_hatch_tx);
+                });
+                carousel.push((eve_tx, h));
+            }
 
-          let mut coop = 0;
-          let mut counter = 0;
-          for incoming in into_hatch_rx {
-              let &(ref tx, _) = &carousel[coop];
-              let tx = tx.clone();
-              tx.send(incoming);
-              coop = (coop + 1) % carousel.len();
-              counter += 1;
-              if counter == expect {
-                  break;
-              };
-          }
-          /* clean up the carousel */
-          while carousel.len() > 0 {
-              if let Some((tx, h)) = carousel.pop() {
-                  drop(tx); 
-                  h.join();
-              };
-          }
-      });
+            let mut coop = 0;
+            let mut counter = 0;
+            let already_hatched_tx = from_hatch_tx.clone();
+            for incoming in into_hatch_rx {
+                let &(ref tx, _) = &carousel[coop];
+                let tx = tx.clone();
+                /* So long as the phenotype of a Creature is uniquely determineed
+                 ,* by its genotype, we can just skip over those creatures that
+                 ,* have already been hatched, returning them. But this might have
+                 ,* the unfortunate consequence that old Creatures crowd the head
+                 ,* of the channel. We'll see how serious an issue this is when we
+                 ,* come to it.
+                 ,*/
+                if incoming.has_hatched() {
+                    tx.send(incoming);
+                } else {
+                    already_hatched_tx.send(incoming);
+                }
+                coop = (coop + 1) % carousel.len();
+                counter += 1;
+                if counter == expect {
+                    break;
+                };
+            }
+            /* clean up the carousel */
+            while carousel.len() > 0 {
+                if let Some((tx, h)) = carousel.pop() {
+                    drop(tx); 
+                    h.join();
+                };
+            }
+        });
 
-      (into_hatch_tx, from_hatch_rx, handle)
-  }
+        (into_hatch_tx, from_hatch_rx, handle)
+    }
 #+END_SRC
 
 This function returns almost immediately when called, 
@@ -348,14 +385,15 @@ bearing three values to its caller:
 - ~handle~, the ~JoinHandle~ of the thread, which will be used to join the
   main hatchery thread.
 
+
 ** Hatchery dependencies
-#+NAME: hatchery dependencies
-#+BEGIN_SRC rust :export none :comments link
-  extern crate unicorn; use std::thread::{sleep, spawn, JoinHandle}; 
+#+NAME: bring the hatchery's dependencies into scope
+#+BEGIN_SRC rust :exports none :comments link
+  extern crate unicorn; 
+  use std::thread::{spawn, JoinHandle}; 
   use std::sync::mpsc::{channel, Receiver, Sender};
   use std::rc::Rc;
   use std::cell::RefCell;
-  use std::time::Duration;
   use emu::loader::{get_mode, read_pc, uc_general_registers, Engine};
   use par::statics::*;
   use gen;
@@ -363,12 +401,3 @@ bearing three values to its caller:
 #+END_SRC
 
 
-** Putting things together
-#+NAME: putting things together
-#+BEGIN_SRC rust :export none :tangle hatchery.rs :noweb tangle :comments link
-<<hatchery dependencies>>
-<<spawn hatchery>>
-<<spawn coop>>
-<<hatch>>
-<<ROP-chain embryogenesis>>
-#+END_SRC

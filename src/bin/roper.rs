@@ -10,7 +10,7 @@ use std::sync::mpsc::Sender;
 use libroper::gen::*;
 use libroper::{emu, gen, log};
 use libroper::evo::pipeline;
-use libroper::evo;
+use libroper::{evo,fit};
 /* The optimal combination, so far, seems to be something like:
  * batch of 1024, channels throttled to 512, number of engines: 4-6
  * 0.09 seconds to evaluate 1024 specimens!
@@ -33,6 +33,8 @@ fn seeder_hatchery_pipeline(engines: usize, expect: usize, logger_tx: Sender<Cre
         mkseed(start.elapsed().subsec_nanos() as u64),
     );
     let (hatch_tx, hatch_rx, hatch_hdl) = emu::spawn_hatchery(engines, expect);
+    let num_evals = engines;
+    let (eval_tx, eval_rx, eval_hdl) = fit::spawn_evaluator(num_evals, 512);
     //    let (logger_tx, logger_hdl) = log::spawn_logger(512);
     let pipe_hdl_1 = pipeline(seed_rx, vec![hatch_tx, logger_tx.clone()]);
 
@@ -40,16 +42,18 @@ fn seeder_hatchery_pipeline(engines: usize, expect: usize, logger_tx: Sender<Cre
     let p0 = hatch_rx.recv().unwrap();
     let p1 = hatch_rx.recv().unwrap();
     let mut rng = thread_rng(); /* screw it, this is just a test */
-    let _offspring = evo::crossover::homologous_crossover(&p0, &p1, &mut rng);
+    //let _offspring = evo::crossover::homologous_crossover(&p0, &p1, &mut rng);
 
     //println!("hello");
-    let pipe_hdl_2 = pipeline(hatch_rx, vec![logger_tx]);
+    let pipe_hdl_2 = pipeline(hatch_rx, vec![eval_tx]);
+    let pipe_hdl_3 = pipeline(eval_rx, vec![logger_tx]);
 
     seed_hdl.join().unwrap(); //println!("seed_hdl joined");
     hatch_hdl.join().unwrap(); //println!("hatch_hdl joined");
+    eval_hdl.join().unwrap();
     pipe_hdl_1.join().unwrap(); //println!("pipe_hdl_1 joined.");
-                                //    logger_hdl.join(); println!("logger_hdl joined");
     pipe_hdl_2.join().unwrap(); //println!("pipe_hdl_2 joined");
+    pipe_hdl_3.join().unwrap(); //println!("pipe_hdl_3 joined");
     let elapsed = start.elapsed();
     println!(
         "{} {} {}",
@@ -89,7 +93,8 @@ fn main() {
     */
     //drop(log_tx);
     //log_handle.join().unwrap();
-    let (logger_tx, logger_hdl) = log::spawn_logger(512, 9965536);
+    let log_freq = if cfg!(debug_assertions) { 4096 } else { 999999 };
+    let (logger_tx, logger_hdl) = log::spawn_logger(512, log_freq);
     for _ in 0..loops {
         seeder_hatchery_pipeline(engines, expect, logger_tx.clone());
     }
