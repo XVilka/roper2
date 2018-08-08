@@ -1,0 +1,146 @@
+#+LATEX_HEADER: \input{../lit-header}
+#+TITLE: Selection
+#+OPTIONS: ^:{}
+
+* Selection on a Stream
+
+One of the interesting design decisions that crystallized in engineering
+this iteration of ROPER has been to treat the population as a cyclical
+"stream", rather than as a mutable collection. 
+
+The stream originates in with the seeder, proceeds through the hatchery,
+on to the evaluator, and then to the selection and breeding actors, without
+any need to synchronize a mutable population vector. What makes this feasible
+is the way that Rust handles the ~Send~ trait: all that's transferred when a
+~Creature~ is sent across a channel is the deed for ownership. This operation
+is no slower than indexing into a vector, practically speaking. 
+
+The only real speedbump lies with the selection actor. Sticking with tournament
+selection for the time being, we want to retain some capacity to select the
+combatants in a tournament /at random/. But randomly selecting from a stream
+seems to require first collecting the incoming elements into a buffer. 
+
+So, let there be a buffer. The selector will wait until ~n~ creatures have
+arrived through the channel, and then perform tournament selection on that
+buffer. Some number ~tsize~ of those creatures will be chosen for a tournament
+-- perhaps several tournaments, in parallel. It will /take/ ~tsize~ creatures, 
+on a secondary channel, then return ~tsize~ back, but of those ~tsize~, ~tsize/2~
+will be the winners of the tournament, and ~tsize/2~ will be newborns.
+
+** Spawning the selector/breeder
+
+#+NAME: spawn the selector 
+#+BEGIN_SRC rust :tangle selector.rs :noweb tangle
+    <<bring dependencies into scope>>
+      pub fn spawn_breeder(
+          window_size: usize,
+          rng_seed: RngSeed,
+      ) -> (Sender<Creature>, Receiver<Creature>, JoinHandle<()>) {
+          let (from_breeder_tx, from_breeder_rx) = channel();
+          let (into_breeder_tx, into_breeder_rx) = channel();
+
+          let window = Arc::new(RefCell::new(Vec::with_capacity(window_size+1)));
+          let mut rng_seed = rng_seed.clone();
+
+          let sel_handle = spawn(move || {
+              let window = window.clone();
+              for creature in into_breeder_rx {
+                  let mut window = window.borrow_mut();
+                  window.push(creature);
+                  if window.len() >= window_size {
+                      /* then it's time to select breeders */
+                      rng_seed = tournament(&mut window, rng_seed);
+                      /* now send them back. new children will have replaced the dead */
+                      for creature in window {
+                          from_breeder_rx.send(creature)
+                      }
+                      /* Now, flush the window out so that it can refill. */
+                      window.truncate(0);
+                  }
+              }
+          });
+
+          (into_breeder_tx, from_breeder_rx, sel_handle)
+      }
+  <<perform selection and mating>>
+#+END_SRC
+
+** Selection functions
+
+To work with the form of homologous crossover implemented in the
+~emu::crossover~ module, we may wish to use simple mate selection
+algorithm, which increases the likelihood that mating pairs will
+have "compatible" crossover masks. But this is a probabilistically
+delicate operation. We don't want to create a perverse incentive
+that will incline the population towards crossover masks that consist
+entirely of ~1~ bits (and so which are /maximally compatible/ with other
+masks), simply for the sake of increasing their likelihood of being
+chosen for tournaments. 
+
+On the other hand, this incentive will only turn out to be "perverse"
+if it overwhelms the selective pressure (which we have theoretically
+grounded reasons to expect) for sparse crossover masks. It could turn
+out to be a useful, countervailing pressure that inclines the masks
+to be as dense as possible, without losing the benefits of sparseness.
+(The benefit of a sparse crossover mask, of course, is that it reduces
+the probability of destructive crossover.)
+
+#+NAME: measure crossover mask compatibility
+#+BEGIN_SRC rust
+  fn xover_compat(c1: &Creature, c2: &Creature) -> usize {
+      (c1.genome.xbits & c2.genome.xbits).count_ones()
+  }
+#+END_SRC
+
+The static variable ~MATE_SELECTION_FACTOR~ will be used...
+
+#+NAME: perform selection and mating
+#+BEGIN_SRC rust
+  fn tournament(selection_window: &mut Vec<Creature>,
+                seed: RngSeed) -> RngSeed {
+      let mut rng = Isaac64Rng::from_seed(RngSeed);
+      /* note: seed creation should probably be its own utility function */
+      let mut new_seed: [u8; 32] = [0; 32];
+      for i in 0..32 { new_seed[i] = rng.gen::<u8>() }
+
+      assert!(*TSIZE * *MATE_SELECTION_FACTOR <= selection_window.len());
+      let indices = rand::seq::sample_indices(&mut rng,
+                                              selection_window.len(),
+                                              ,*TSIZE * *MATE_SELECTION_FACTOR);
+      /* TODO: take n times as many combatants as needed, then winnow
+       ,* out those least compatible with first combatant's crossover mask
+       ,*/
+      let compatkey = |i| {
+          64 - xover_compat(&selection_window[0], &selection_window[i])
+      }
+      indices.sort_by_key(compatkey);
+      /* now drop the least compatible from consideration */
+      indices.truncate(*TSIZE);
+
+      let fitkey = |i| {
+          &selection_window[i].fitness
+      }
+      /* now, sort the remaining indices by the fitness of their creatures */
+      /* TODO -- we need a pareto sorting function */
+      indices.sort_by_key(fitkey);
+      /* and choose the parents and the fallen */
+      // *TSIZE must be >= 4.
+      let (p0, p1) = (indices[*TSIZE-1], indices[*TSIZE-2]);
+      let (d0, d1) = (indices[0], indices[1]);
+      let (mother, father) = (&selection_window[p0], &selection_window[p1]);
+      let offspring = homologous_crossover(&mother, &father, &mut rng);
+      /* now, place the offspring back in the population by inserting them
+       ,* into the selection window
+       ,*/
+      selection_window[d0] = offspring[0];
+      selection_window[d1] = offspring[1];
+
+      new_seed
+  }
+#+END_SRC
+
+
+#+NAME: bring dependencies into scope
+#+BEGIN_SRC rust
+
+#+END_SRC

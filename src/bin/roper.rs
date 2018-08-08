@@ -26,6 +26,7 @@ fn mkseed(u: u64) -> [u8; 32] {
 
 fn seeder_hatchery_pipeline(engines: usize, expect: usize, logger_tx: Sender<Creature>) {
     let start = Instant::now();
+    let num_evals = engines;
     let (seed_rx, seed_hdl) = gen::spawn_seeder(
         expect,
         (2, 32),
@@ -33,16 +34,15 @@ fn seeder_hatchery_pipeline(engines: usize, expect: usize, logger_tx: Sender<Cre
         mkseed(start.elapsed().subsec_nanos() as u64),
     );
     let (hatch_tx, hatch_rx, hatch_hdl) = emu::spawn_hatchery(engines, expect);
-    let num_evals = engines;
     let (eval_tx, eval_rx, eval_hdl) = fit::spawn_evaluator(num_evals, 512);
-    //    let (logger_tx, logger_hdl) = log::spawn_logger(512);
+    // let (sel_tx, sel_rx, sel_hdl) = emu::spawn_breeder(); // ?
     let pipe_hdl_1 = pipeline(seed_rx, vec![hatch_tx, logger_tx.clone()]);
 
     /* KLUDGEY TESTING THING */
     let p0 = hatch_rx.recv().unwrap();
     let p1 = hatch_rx.recv().unwrap();
     let mut rng = thread_rng(); /* screw it, this is just a test */
-    //let _offspring = evo::crossover::homologous_crossover(&p0, &p1, &mut rng);
+    let _offspring = evo::crossover::homologous_crossover(&p0, &p1, &mut rng);
 
     //println!("hello");
     let pipe_hdl_2 = pipeline(hatch_rx, vec![eval_tx]);

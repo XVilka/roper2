@@ -92,7 +92,7 @@ fn slave_eval(
         let fit = 0.5; /* FIXME Placeholder */
         creature.fitness = Some(vec![mean_podwise_fitness(&creature.phenome,
                                                           basic_retcount_per_pod_ff)]);
-        if creature.fitness.as_ref().unwrap()[0] < 0.5 {
+        if creature.fitness.as_ref().unwrap()[0] > 2.0 {
             println!("{:?}", &creature.fitness);
         };
         eval_tx.send(creature);
@@ -119,7 +119,9 @@ fn basic_retcount_per_pod_ff(pod: &Option<Pod>) -> f32 {
     //let upper_bound = 128;
     //let retscore = usize::min(rl.len(), upper_bound);
     //retscore as f32 / upper_bound as f32
-    if rl.len() == 0 { 1.0 } else { 1.0 / rl.len() as f32 }
+    //if rl.len() == 0 { 1.0 } else { 1.0 / rl.len() as f32 }
+    rl.len() as f32 /* setting 0 as least fitness rather than 1.0
+                     * may turn out to be less restrictive */
 }
 
 /***
