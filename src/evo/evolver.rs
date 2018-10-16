@@ -9,7 +9,8 @@ use gen;
 use gen::Creature;
 use log;
 use par::statics::*;
-use breeders::*;
+use selector::*;
+
 
 /* The genotype->phenotype pipeline */
 /* -- spawns hatchery
@@ -39,7 +40,6 @@ pub fn pipeline(rx: Receiver<Creature>, txs: Vec<Sender<Creature>>) -> JoinHandl
 pub fn evolution_pipeline(num_engines: usize, num_evaluators: usize) -> () {
     let expect = 0; /* indefinite hatchery loop */
     /* FIXME: expect here is just a placeholder. Not sure what to do with it yet. */
-    let sel_meth = SelectionMethod::Tournament;
     let population_size = 4096;
 
     let (from_seeder_rx, seed_handle) = gen::spawn_seeder(
@@ -48,9 +48,10 @@ pub fn evolution_pipeline(num_engines: usize, num_evaluators: usize) -> () {
         &vec![vec![1, 2, 3]], /* fake problem set */
         *RNG_SEED,            /* but FIXME: refresh seed! */
     );
+
     let (into_hatch_tx, from_hatch_rx, hatch_handle) = emu::spawn_hatchery(num_engines, expect);
     let (into_eval_tx, from_eval_rx, eval_handle) = fit::spawn_evaluator(num_evaluators, 4096);
-    let (into_breed_tx, from_breed_rx, breed_handle) = spawn_breeder(sel_meth);
+    let (into_breed_tx, from_breed_rx, breed_handle) = spawn_breeder(1024, *RNG_SEED);
     let (into_log_tx, log_handle) = log::spawn_logger(4096, 4096);
 
     /* now weld the pipelines together */

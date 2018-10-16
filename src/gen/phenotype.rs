@@ -119,6 +119,25 @@ pub type Input = Vec<u64>; /* a static reference would be better FIXME */
 pub type Phenome = HashMap<Input, Option<Pod>>;
 pub type Fitness = Vec<f32>;
 
+
+pub trait Pareto {
+    fn dominated_by(&self, other: &Fitness) -> bool;
+}
+/* Implement some sort of Pareto comparison here */
+/* we'll probably want to move this into its own module, eventually. */
+impl Pareto for Fitness {
+    fn dominated_by(&self, other: &Fitness) -> bool {
+        let mut dom = true;
+        for (x,y) in self.iter().zip(other.iter()) {
+            if (x > y) {
+                dom = false;
+                break;
+            }
+        }
+        dom
+    }
+}
+
 #[derive(ForeignValue, IntoValue, FromValueRef, Debug, Clone)]
 pub struct Creature {
     pub genome: Chain,

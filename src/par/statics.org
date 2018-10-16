@@ -117,90 +117,128 @@ A more structured view on this same data is supplied by the static global,
 
  #+NAME: other static variables
  #+BEGIN_SRC rust 
- // set addr size here too. dispense with risc_width() calls, which are confused
- lazy_static! {
-     pub static ref ARCHITECTURE: Arch
-         = {
-             let arch_magic = match Object::parse(&CODE_BUFFER).unwrap() {
-                 Object::Elf(e) => machine_to_str(e.header.e_machine),
-                 _ => panic!("Binary format unimplemented."),
-             };
-             match arch_magic {
-                 "ARM" => Arch::Arm(Mode::Arm),
-                 "MIPS"  => Arch::Mips(Mode::Be),
-                 "MIPS_RS3_LE" => Arch::Mips(Mode::Le),
-                 "X86_64" => Arch::X86(Mode::Bits64),
-                 "386" => Arch::X86(Mode::Bits32),
-                 _  => panic!("arch_magic not recognized!"),
-             }
-         };
- }
 
- lazy_static! {
-     pub static ref ADDR_WIDTH: usize
-         = {
-             match *ARCHITECTURE {
-                 Arch::X86(_) => 8,
-                 _ => 4,
-             }
-         };
- }
 
- /// A tiny machine word formatter
- #[inline]
- pub fn wf<T: PrimInt + fmt::LowerHex>(w: T) -> String {
-     match *ARCHITECTURE {
-         Arch::X86(Mode::Bits64) => format!("{:016x}", w),
-         Arch::X86(Mode::Bits16) => format!("{:04x}", w),
-         _ => format!("{:08x}", w),
-     }
- }
+   // set addr size here too. dispense with risc_width() calls, which are confused
+   lazy_static! {
+       pub static ref ARCHITECTURE: Arch
+           = {
+               let arch_magic = match Object::parse(&CODE_BUFFER).unwrap() {
+                   Object::Elf(e) => machine_to_str(e.header.e_machine),
+                   _ => panic!("Binary format unimplemented."),
+               };
+               match arch_magic {
+                   "ARM" => Arch::Arm(Mode::Arm),
+                   "MIPS"  => Arch::Mips(Mode::Be),
+                   "MIPS_RS3_LE" => Arch::Mips(Mode::Le),
+                   "X86_64" => Arch::X86(Mode::Bits64),
+                   "386" => Arch::X86(Mode::Bits32),
+                   _  => panic!("arch_magic not recognized!"),
+               }
+           };
+   }
 
- lazy_static! {
-     pub static ref KILL_SWITCH: Arc<RwLock<bool>>
-         = Arc::new(RwLock::new(false));
- }
+   lazy_static! {
+       pub static ref ADDR_WIDTH: usize
+           = {
+               match *ARCHITECTURE {
+                   Arch::X86(_) => 8,
+                   _ => 4,
+               }
+           };
+   }
 
- pub const INPUT_SLOT_FREQ: f32 = 0.1;
+   /// A tiny machine word formatter
+   #[inline]
+   pub fn wf<T: PrimInt + fmt::LowerHex>(w: T) -> String {
+       match *ARCHITECTURE {
+           Arch::X86(Mode::Bits64) => format!("{:016x}", w),
+           Arch::X86(Mode::Bits16) => format!("{:04x}", w),
+           _ => format!("{:08x}", w),
+       }
+   }
 
- lazy_static! {
-     pub static ref CROSSOVER_DEGREE: f32 = 0.5;
-     /* TODO: Read this from a config file */
- }
+   lazy_static! {
+       pub static ref KILL_SWITCH: Arc<RwLock<bool>>
+           = Arc::new(RwLock::new(false));
+   }
 
- lazy_static! {
-     /* if true, then homologous xbit crossover selects only those slots
-      * for which mbit ^ pbit == 1. if false, it selects only those slots
-      * for which mbit ^ pbit == 0.
-      */
-     pub static ref CROSSOVER_XBIT: bool = true;
-     /* TODO read from config file */
- }
+   pub const INPUT_SLOT_FREQ: f32 = 0.1;
 
- #[derive(Copy, Clone, PartialEq, Eq, Debug)]
- pub enum MaskOp {
-     Xor,
-     Nand,
-     OnePt,
-     Uniform,
-     And,
-     Or,
- }
+   lazy_static! {
+       pub static ref CROSSOVER_DEGREE: f32 = 0.5;
+       /* TODO: Read this from a config file */
+   }
 
- lazy_static! {
-     /* TODO read from config file */
-     pub static ref CROSSOVER_MASK_COMBINER: MaskOp = MaskOp::And;
- }
+   fn lookup_usize_setting (section: &str, item: &str, default: usize) -> usize {
+       let sec = INI.section(Some(section.to_owned()));
+       let dstr = &format!("{}",default); /* KLUDGE */
+       match sec {
+           None => default,
+           Some(s) => s.get(item).unwrap_or(&dstr)
+               .parse::<usize>()
+               .unwrap(),
+       }
+   }
 
- lazy_static! {
-     /* TODO read */
-     pub static ref CROSSOVER_MASK_INHERITANCE: MaskOp = MaskOp::Uniform;
- } 
+   fn lookup_f32_setting (section: &str, item: &str, default: f32) -> f32 {
+       let sec = INI.section(Some(section.to_owned()));
+       let dstr = format!("{}",default); /* KLUDGE */
+       match sec {
+           None => default,
+           Some(s) => s.get(item).unwrap_or(&dstr)
+               .parse::<f32>()
+               .unwrap(),
+       }
+   }
 
- lazy_static! {
-     /* TODO read */
-     pub static ref CROSSOVER_MASK_MUT_RATE: f32 = 0.2;
- }
+
+
+   lazy_static! {
+       pub static ref TSIZE: usize = 
+           lookup_usize_setting ("Selection", "tournament_size", 4);
+   }
+
+   lazy_static! {
+       pub static ref MATE_SELECTION_FACTOR: f32 =
+           lookup_f32_setting ("Selection", "mate_selection_factor", 1.00);
+   }
+
+
+
+   lazy_static! {
+       /* if true, then homologous xbit crossover selects only those slots
+        ,* for which mbit ^ pbit == 1. if false, it selects only those slots
+        ,* for which mbit ^ pbit == 0.
+        ,*/
+       pub static ref CROSSOVER_XBIT: bool = true;
+       /* TODO read from config file */
+   }
+
+   #[derive(Copy, Clone, PartialEq, Eq, Debug)]
+   pub enum MaskOp {
+       Xor,
+       Nand,
+       OnePt,
+       Uniform,
+       And,
+       Or,
+   }
+
+   lazy_static! {
+       /* TODO read from config file */
+       pub static ref CROSSOVER_MASK_COMBINER: MaskOp = MaskOp::And;
+   }
+
+   lazy_static! {
+       /* TODO read */
+       pub static ref CROSSOVER_MASK_INHERITANCE: MaskOp = MaskOp::Uniform;
+   } 
+
+   lazy_static! {
+       /* TODO read */
+       pub static ref CROSSOVER_MASK_MUT_RATE: f32 = 0.2;
+   }
  #+END_SRC
 
 * Dependencies

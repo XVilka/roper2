@@ -1,4 +1,4 @@
-% Created 2018-05-20 Sun 14:11
+% Created 2018-09-15 Sat 20:05
 % Intended LaTeX compiler: pdflatex
 \documentclass[11pt]{article}
 \usepackage[utf8]{inputenc}
@@ -17,14 +17,15 @@
 \usepackage{listings}
 \usepackage[hidelinks]{hyperref}
 \input{../lit-header}
+\author{oblivia simplex}
 \date{\today}
 \title{Static Configuration Variables}
 \hypersetup{
- pdfauthor={},
+ pdfauthor={oblivia simplex},
  pdftitle={Static Configuration Variables},
  pdfkeywords={},
  pdfsubject={},
- pdfcreator={Emacs 25.3.1 (Org mode 9.1.13)}, 
+ pdfcreator={Emacs 25.2.2 (Org mode 9.1.13)}, 
  pdflang={English}}
 \begin{document}
 
@@ -33,7 +34,7 @@
 
 
 \section{Reading the INI file}
-\label{sec:org613a51d}
+\label{sec:org51cf5fb}
 
 First, we need to tell \gls{roper2} where to find the config file. This is
 set through the environment variable, \texttt{ROPER\_INI\_PATH}.
@@ -63,17 +64,20 @@ valid configuration file (using the current defaults) is as follows:
 encoding=utf-8
 
 [Binary]
-path=/home/oblivia/roper2/elfs/x86/systemd
+path=/home/oblivia/src/roper2/elfs/x86/systemd
 
 [RNG]
 seed=de ad f0 0d 12 34 56 78 ba ad ba be c0 de fa ce
+
+[Selection]
+tournament_size=4
 \end{verbatim}
 
 Now, we want to load the entire configuration in as a static variable.
 To do this, we use the \texttt{lazy\_static!} macro, which we'll be leaning on
 pretty heavily in this module. 
 
-\lstset{language=rust,label=orgd5ab441,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org0769949,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 lazy_static! {
     pub static ref INI: Ini = Ini::load_from_file(&*ROPER_INI_PATH)
@@ -90,7 +94,7 @@ okay if fewer than 32 bytes are specified in the \texttt{ini} file -- the remain
 bytes will just be padded with zeroes. Any excess bytes will be ignored,
 so if you can't count, no sweat.
 
-\lstset{language=rust,label=org312c02e,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org4618c6e,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 pub type RngSeed = [u8; 32];
 
@@ -115,13 +119,13 @@ lazy_static! {
 \end{lstlisting}
 
 \subsection{Loading the CODE\_BUFFER}
-\label{sec:orgf994489}
+\label{sec:org92c46ae}
 
 There's no reason to read the machine code we're targetting into memory
 more than once, and no reason to tangle up the code with passed pointers
 to this shared and immutable resource, so we might as well load that as
 a global as well.
-\lstset{language=rust,label=org2b8ce20,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org9660514,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 lazy_static! {
     pub static ref CODE_BUFFER: Vec<u8>
@@ -152,12 +156,14 @@ A more structured view on this same data is supplied by the static global,
 
 
 \subsection{Other Static Variables}
-\label{sec:org348a02f}
+\label{sec:org4759f27}
 
 A bit too lazy to document these right now. 
 
-\lstset{language=rust,label=org76e1630,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org8496da7,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
+
+
 // set addr size here too. dispense with risc_width() calls, which are confused
 lazy_static! {
     pub static ref ARCHITECTURE: Arch
@@ -209,6 +215,42 @@ lazy_static! {
     /* TODO: Read this from a config file */
 }
 
+fn lookup_usize_setting (section: &str, item: &str, default: usize) -> usize {
+    let sec = INI.section(Some(section.to_owned()));
+    let dstr = &format!("{}",default); /* KLUDGE */
+    match sec {
+        None => default,
+        Some(s) => s.get(item).unwrap_or(&dstr)
+            .parse::<usize>()
+            .unwrap(),
+    }
+}
+
+fn lookup_f32_setting (section: &str, item: &str, default: f32) -> f32 {
+    let sec = INI.section(Some(section.to_owned()));
+    let dstr = format!("{}",default); /* KLUDGE */
+    match sec {
+        None => default,
+        Some(s) => s.get(item).unwrap_or(&dstr)
+            .parse::<f32>()
+            .unwrap(),
+    }
+}
+
+
+
+lazy_static! {
+    pub static ref TSIZE: usize = 
+        lookup_usize_setting ("Selection", "tournament_size", 4);
+}
+
+lazy_static! {
+    pub static ref MATE_SELECTION_FACTOR: f32 =
+        lookup_f32_setting ("Selection", "mate_selection_factor", 1.00);
+}
+
+
+
 lazy_static! {
     /* if true, then homologous xbit crossover selects only those slots
      * for which mbit ^ pbit == 1. if false, it selects only those slots
@@ -245,9 +287,9 @@ lazy_static! {
 \end{lstlisting}
 
 \section{Dependencies}
-\label{sec:org3fde841}
+\label{sec:org7fecf5a}
 
-\lstset{language=rust,label=orga1fea7a,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org5089f60,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 extern crate goblin;
 extern crate num;

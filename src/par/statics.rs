@@ -69,6 +69,8 @@ lazy_static! {
             buffer
         };
 }
+
+
 // set addr size here too. dispense with risc_width() calls, which are confused
 lazy_static! {
     pub static ref ARCHITECTURE: Arch
@@ -119,6 +121,42 @@ lazy_static! {
     pub static ref CROSSOVER_DEGREE: f32 = 0.5;
     /* TODO: Read this from a config file */
 }
+
+fn lookup_usize_setting (section: &str, item: &str, default: usize) -> usize {
+    let sec = INI.section(Some(section.to_owned()));
+    let dstr = &format!("{}",default); /* KLUDGE */
+    match sec {
+        None => default,
+        Some(s) => s.get(item).unwrap_or(&dstr)
+            .parse::<usize>()
+            .unwrap(),
+    }
+}
+
+fn lookup_f32_setting (section: &str, item: &str, default: f32) -> f32 {
+    let sec = INI.section(Some(section.to_owned()));
+    let dstr = format!("{}",default); /* KLUDGE */
+    match sec {
+        None => default,
+        Some(s) => s.get(item).unwrap_or(&dstr)
+            .parse::<f32>()
+            .unwrap(),
+    }
+}
+
+
+
+lazy_static! {
+    pub static ref TSIZE: usize = 
+        lookup_usize_setting ("Selection", "tournament_size", 4);
+}
+
+lazy_static! {
+    pub static ref MATE_SELECTION_FACTOR: f32 =
+        lookup_f32_setting ("Selection", "mate_selection_factor", 1.00);
+}
+
+
 
 lazy_static! {
     /* if true, then homologous xbit crossover selects only those slots

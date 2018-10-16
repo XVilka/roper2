@@ -35,8 +35,10 @@ fn seeder_hatchery_pipeline(engines: usize, expect: usize, logger_tx: Sender<Cre
     );
     let (hatch_tx, hatch_rx, hatch_hdl) = emu::spawn_hatchery(engines, expect);
     let (eval_tx, eval_rx, eval_hdl) = fit::spawn_evaluator(num_evals, 512);
-    // let (sel_tx, sel_rx, sel_hdl) = emu::spawn_breeder(); // ?
-    let pipe_hdl_1 = pipeline(seed_rx, vec![hatch_tx, logger_tx.clone()]);
+    //let (breed_tx, breed_rx, sel_hdl) = evo::spawn_breeder(512, mkseed(0xdeadbeef)); // ?
+
+    /* Build the pipelines */
+    let pipe_hdl_1 = pipeline(seed_rx, vec![hatch_tx.clone(), logger_tx.clone()]);
 
     /* KLUDGEY TESTING THING */
     let p0 = hatch_rx.recv().unwrap();
@@ -46,7 +48,9 @@ fn seeder_hatchery_pipeline(engines: usize, expect: usize, logger_tx: Sender<Cre
 
     //println!("hello");
     let pipe_hdl_2 = pipeline(hatch_rx, vec![eval_tx]);
-    let pipe_hdl_3 = pipeline(eval_rx, vec![logger_tx]);
+    let pipe_hdl_3 = pipeline(eval_rx,  vec![ /*breed_tx,*/ logger_tx]);
+    //let pipe_hdl_4 = pipeline(breed_rx, vec![hatch_tx]);
+
 
     seed_hdl.join().unwrap(); //println!("seed_hdl joined");
     hatch_hdl.join().unwrap(); //println!("hatch_hdl joined");
@@ -64,7 +68,6 @@ fn seeder_hatchery_pipeline(engines: usize, expect: usize, logger_tx: Sender<Cre
 }
 
 fn main() {
-    let _dummy = unicorn::CpuX86::new(unicorn::Mode::MODE_64).unwrap();
     let engines = match env::var("ROPER_ENGINES") {
         Err(_) => if cfg!(debug_assertions) {
             1
