@@ -11,7 +11,6 @@ use gen::phenotype::{VisitRecord, WriteRecord};
 /* An expect of 0 will cause this loop to run indefinitely */
 pub fn spawn_hatchery(
     num_engines: usize,
-    expect: usize,
 ) -> (
     Sender<gen::Creature>,
     Receiver<gen::Creature>,
@@ -41,6 +40,7 @@ pub fn spawn_hatchery(
         let mut counter = 0;
         let already_hatched_tx = from_hatch_tx.clone();
         for incoming in into_hatch_rx {
+            println!("* into_hatch_rx received a transmission");
             let &(ref tx, _) = &carousel[coop];
             let tx = tx.clone();
             /* So long as the phenotype of a Creature is uniquely determineed
@@ -57,9 +57,9 @@ pub fn spawn_hatchery(
             }
             coop = (coop + 1) % carousel.len();
             counter += 1;
-            if counter == expect {
-                break;
-            };
+            //if counter == expect {
+            //    break;
+            //};
         }
         /* clean up the carousel *
         while carousel.len() > 0 {

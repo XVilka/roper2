@@ -34,18 +34,18 @@ fn seeder_hatchery_pipeline(engines: usize, expect: usize, logger_tx: Sender<Cre
         &vec![vec![1, 2, 3]],
         mkseed(start.elapsed().subsec_nanos() as u64),
     );
-    let (hatch_tx, hatch_rx, hatch_hdl) = emu::spawn_hatchery(engines, expect);
+    let (hatch_tx, hatch_rx, hatch_hdl) = emu::spawn_hatchery(engines);
     let (eval_tx, eval_rx, eval_hdl) = fit::spawn_evaluator(num_evals, 512);
     let (breed_tx, breed_rx, sel_hdl) = evo::spawn_breeder(512, mkseed(0xdeadbeef)); // ?
 
     /* Build the pipelines */
-    let pipe_hdl_1 = pipeline(seed_rx, vec![hatch_tx.clone(), logger_tx.clone()], "seed/hatch+log");
+    let pipe_hdl_1 = pipeline(seed_rx, vec![hatch_tx.clone()], "seed/hatch");
 
     /* KLUDGEY TESTING THING */
-    let p0 = hatch_rx.recv().unwrap();
-    let p1 = hatch_rx.recv().unwrap();
-    let mut rng = thread_rng(); /* screw it, this is just a test */
-    let _offspring = evo::crossover::homologous_crossover(&p0, &p1, &mut rng);
+    //let p0 = hatch_rx.recv().unwrap();
+    //let p1 = hatch_rx.recv().unwrap();
+    //let mut rng = thread_rng(); /* screw it, this is just a test */
+    //let _offspring = evo::crossover::homologous_crossover(&p0, &p1, &mut rng);
 
     //println!("hello");
     let pipe_hdl_2 = pipeline(hatch_rx, vec![eval_tx], "hatch/eval");
@@ -53,13 +53,13 @@ fn seeder_hatchery_pipeline(engines: usize, expect: usize, logger_tx: Sender<Cre
     let pipe_hdl_4 = pipeline(breed_rx, vec![hatch_tx.clone()], "breed/hatch");
 
 
-    seed_hdl.join().unwrap(); //println!("seed_hdl joined");
-    hatch_hdl.join().unwrap(); //println!("hatch_hdl joined");
-    eval_hdl.join().unwrap();
-    pipe_hdl_1.join().unwrap(); //println!("pipe_hdl_1 joined.");
-    pipe_hdl_2.join().unwrap(); //println!("pipe_hdl_2 joined");
-    pipe_hdl_3.join().unwrap(); //println!("pipe_hdl_3 joined");
-    pipe_hdl_4.join().unwrap();
+//    seed_hdl.join().unwrap(); //println!("seed_hdl joined");
+//    hatch_hdl.join().unwrap(); //println!("hatch_hdl joined");
+//    eval_hdl.join().unwrap();
+//    pipe_hdl_1.join().unwrap(); //println!("pipe_hdl_1 joined.");
+//    pipe_hdl_2.join().unwrap(); //println!("pipe_hdl_2 joined");
+//    pipe_hdl_3.join().unwrap(); //println!("pipe_hdl_3 joined");
+//    pipe_hdl_4.join().unwrap();
     let elapsed = start.elapsed();
     println!(
         "{} {} {}",

@@ -27,16 +27,18 @@ pub fn pipeline(rx: Receiver<Creature>, txs: Vec<Sender<Creature>>,
     let h = spawn(move || {
         for x in rx {
             if txs.len() > 1 {
+                let mut tx_num = 1;
                 for tx in txs[1..].iter() {
                     match tx.send(x.clone()) {
-                        Err(e) => println!("-- {}: {:?}", note, e),
-                        Ok(k) => println!("=- {} ok {:?}", note, k),
+                        Err(e) => println!("[tx:{}] {}: {:?}", tx_num, note, e),
+                        Ok(k) =>  println!("[tx:{}] {} ok {:?}", tx_num, note, k),
                     }
+                    tx_num += 1;
                 }
             };
             match txs[0].send(x) {
-                Err(e) => println!("--- {}: {:?}", note, e),
-                Ok(k) => println!("=-- {} ok {:?}", note, k),
+                Err(e) => println!("[tx:0] {}: {:?}", note, e),
+                Ok(k) =>  println!("[tx:0] {} ok {:?}", note, k),
             }
         }
     });
@@ -55,7 +57,7 @@ pub fn evolution_pipeline(num_engines: usize, num_evaluators: usize) -> () {
         *RNG_SEED,            /* but FIXME: refresh seed! */
     );
 
-    let (into_hatch_tx, from_hatch_rx, hatch_handle) = emu::spawn_hatchery(num_engines, expect);
+    let (into_hatch_tx, from_hatch_rx, hatch_handle) = emu::spawn_hatchery(num_engines);
     let (into_eval_tx, from_eval_rx, eval_handle) = fit::spawn_evaluator(num_evaluators, 4096);
     let (into_breed_tx, from_breed_rx, breed_handle) = spawn_breeder(1024, *RNG_SEED);
     let (into_log_tx, log_handle) = log::spawn_logger(4096, 4096);
