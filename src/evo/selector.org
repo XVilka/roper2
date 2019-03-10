@@ -66,6 +66,35 @@ them on doing so, and then inject them back into the stream.
 
 ** Spawning the selector/breeder
 
+As creatures enter the breeding thread, through the =into_breeder_tx=
+channel, they are assigned to a randomly chosen slot in the =arena=. 
+When a second creature is assigned to the same slot -- when there is
+a collision -- a tournament is triggered. The loser is destroyed, and
+the winner is moved to a mating pool. 
+
+When the mating pool has reached a certain capacity, its residents will
+pair off according to compatibility. Each creature will pair with the
+creature in the pool with whom it is most compatible. (We could introduce
+some degree of noise into this selection as well.) 
+
+The mating pairs then reproduce through homologous crossover, and then
+both the parents and the offspring are returned to the population stream.
+
+The arena needs:
+- a channel to recv creatures from the breeder thread
+- a channel to send creatures to the mating thread
+- a channel to recv creatures from the mating thread
+- a channel to send creatures back to the breeder thread
+  (or to the next phase in the evolution stream)
+ 
+We can probably reuse the pattern that we've already used in
+the hatchery and elsewhere. 
+
+
+#+NAME: spawn the arena
+#+BEGIN_SRC rust :tangle selector.rs :noweb tangle
+#+END_SRC
+
 #+NAME: spawn the selector 
 #+BEGIN_SRC rust :tangle selector.rs :noweb tangle
   pub fn spawn_breeder(
@@ -77,6 +106,10 @@ them on doing so, and then inject them back into the stream.
 
       let sel_handle = spawn(move || {
         /* TODO */
+        for incoming in into_breeder_rx {
+          /* STUB, because the spice must flow */
+          from_breeder_tx.send(incoming);
+        }
       });
 
       (into_breeder_tx, from_breeder_rx, sel_handle)

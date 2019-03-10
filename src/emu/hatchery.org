@@ -67,6 +67,7 @@ and everything proceeds just as it would in a "wild" gls:rop attack.
     }
 #+END_SRC
 
+
 *** Hooks for behavioural analysis
 The phenotype -- or, rather, that aspect of the phenotype that developed
 [fn:: In the sense of an embryo, or a photograph.] in this particular execution
@@ -311,65 +312,71 @@ thread, which is spawned, in turn, by the ~spawn_hatchery~ function.
 
 #+NAME: spawn the main hatchery loop
 #+BEGIN_SRC rust :exports none :comments link
-    /* An expect of 0 will cause this loop to run indefinitely */
-    pub fn spawn_hatchery(
-        num_engines: usize,
-        expect: usize,
-    ) -> (
-        Sender<gen::Creature>,
-        Receiver<gen::Creature>,
-        JoinHandle<()>,
-    ) {
-        let (from_hatch_tx, from_hatch_rx) = channel();
-        let (into_hatch_tx, into_hatch_rx) = channel();
+  /* An expect of 0 will cause this loop to run indefinitely */
+  pub fn spawn_hatchery(
+      num_engines: usize,
+      expect: usize,
+  ) -> (
+      Sender<gen::Creature>,
+      Receiver<gen::Creature>,
+      JoinHandle<()>,
+  ) {
 
-        let handle = spawn(move || {
-            let mut carousel = Vec::new();
+      let (from_hatch_tx, from_hatch_rx) 
+          : (Sender<gen::Creature>, Receiver<gen::Creature>) 
+          = channel();
+      let (into_hatch_tx, into_hatch_rx) 
+          : (Sender<gen::Creature>, Receiver<gen::Creature>) 
+          = channel();
 
-            for _ in 0..num_engines {
-                let (eve_tx, eve_rx) = channel();
-                let from_hatch_tx = from_hatch_tx.clone();
-                let h = spawn(move || {
-                    spawn_coop(eve_rx, from_hatch_tx);
-                });
-                carousel.push((eve_tx, h));
-            }
+      let handle = spawn(move || {
+          let mut carousel = Vec::new();
 
-            let mut coop = 0;
-            let mut counter = 0;
-            let already_hatched_tx = from_hatch_tx.clone();
-            for incoming in into_hatch_rx {
-                let &(ref tx, _) = &carousel[coop];
-                let tx = tx.clone();
-                /* So long as the phenotype of a Creature is uniquely determineed
-                 ,* by its genotype, we can just skip over those creatures that
-                 ,* have already been hatched, returning them. But this might have
-                 ,* the unfortunate consequence that old Creatures crowd the head
-                 ,* of the channel. We'll see how serious an issue this is when we
-                 ,* come to it.
-                 ,*/
-                if incoming.has_hatched() {
-                    tx.send(incoming);
-                } else {
-                    already_hatched_tx.send(incoming);
-                }
-                coop = (coop + 1) % carousel.len();
-                counter += 1;
-                if counter == expect {
-                    break;
-                };
-            }
-            /* clean up the carousel */
-            while carousel.len() > 0 {
-                if let Some((tx, h)) = carousel.pop() {
-                    drop(tx); 
-                    h.join();
-                };
-            }
-        });
+          for _ in 0..num_engines {
+              let (eve_tx, eve_rx) = channel();
+              let from_hatch_tx = from_hatch_tx.clone();
+              let h = spawn(move || {
+                  spawn_coop(eve_rx, from_hatch_tx);
+              });
+              carousel.push((eve_tx, h));
+          }
 
-        (into_hatch_tx, from_hatch_rx, handle)
-    }
+          let mut coop = 0;
+          let mut counter = 0;
+          let already_hatched_tx = from_hatch_tx.clone();
+          for incoming in into_hatch_rx {
+              let &(ref tx, _) = &carousel[coop];
+              let tx = tx.clone();
+              /* So long as the phenotype of a Creature is uniquely determineed
+               ,* by its genotype, we can just skip over those creatures that
+               ,* have already been hatched, returning them. But this might have
+               ,* the unfortunate consequence that old Creatures crowd the head
+               ,* of the channel. We'll see how serious an issue this is when we
+               ,* come to it.
+               ,*/
+              if incoming.has_hatched() {
+                  tx.send(incoming);
+              } else {
+                  already_hatched_tx.send(incoming);
+              }
+              coop = (coop + 1) % carousel.len();
+              counter += 1;
+              if counter == expect {
+                  break;
+              };
+          }
+          /* clean up the carousel *
+          while carousel.len() > 0 {
+              if let Some((tx, h)) = carousel.pop() {
+                println!(")-- cleaning up {:?} --(", tx);
+                  drop(tx); 
+                  h.join();
+              };
+          } */
+      });
+
+      (into_hatch_tx, from_hatch_rx, handle)
+  }
 #+END_SRC
 
 This function returns almost immediately when called, 

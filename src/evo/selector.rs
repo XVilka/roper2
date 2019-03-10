@@ -15,6 +15,8 @@ use gen::phenotype::{Creature,Fitness};
 use evo::crossover::{homologous_crossover};
 use fit::circbuf::{CircBuf};
 
+
+
 pub fn spawn_breeder(
     window_size: usize,
     rng_seed: RngSeed,
@@ -24,6 +26,10 @@ pub fn spawn_breeder(
 
     let sel_handle = spawn(move || {
       /* TODO */
+      for incoming in into_breeder_rx {
+        /* STUB, because the spice must flow */
+        from_breeder_tx.send(incoming);
+      }
     });
 
     (into_breeder_tx, from_breeder_rx, sel_handle)

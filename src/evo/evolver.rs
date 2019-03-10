@@ -21,17 +21,23 @@ use selector::*;
  * -- reproduction routine sends them back here, to go on to hatchery
  */
 
-pub fn pipeline(rx: Receiver<Creature>, txs: Vec<Sender<Creature>>) -> JoinHandle<()> {
+pub fn pipeline(rx: Receiver<Creature>, txs: Vec<Sender<Creature>>,
+                note: &'static str) -> JoinHandle<()> {
     assert!(txs.len() > 0);
     let h = spawn(move || {
         for x in rx {
             if txs.len() > 1 {
                 for tx in txs[1..].iter() {
-                    let xc = x.clone();
-                    tx.send(xc).unwrap();
+                    match tx.send(x.clone()) {
+                        Err(e) => println!("-- {}: {:?}", note, e),
+                        Ok(k) => println!("=- {} ok {:?}", note, k),
+                    }
                 }
             };
-            txs[0].send(x).unwrap();
+            match txs[0].send(x) {
+                Err(e) => println!("--- {}: {:?}", note, e),
+                Ok(k) => println!("=-- {} ok {:?}", note, k),
+            }
         }
     });
     h
@@ -56,10 +62,10 @@ pub fn evolution_pipeline(num_engines: usize, num_evaluators: usize) -> () {
 
     /* now weld the pipelines together */
     let mut pipehandles = Vec::new();
-    pipehandles.push(pipeline(from_seeder_rx, vec![into_hatch_tx.clone()]));
-    pipehandles.push(pipeline(from_hatch_rx, vec![into_eval_tx]));
-    pipehandles.push(pipeline(from_eval_rx, vec![into_breed_tx, into_log_tx]));
-    pipehandles.push(pipeline(from_breed_rx, vec![into_hatch_tx]));
+    pipehandles.push(pipeline(from_seeder_rx, vec![into_hatch_tx.clone()],""));
+    pipehandles.push(pipeline(from_hatch_rx, vec![into_eval_tx],""));
+    pipehandles.push(pipeline(from_eval_rx, vec![into_breed_tx, into_log_tx],""));
+    pipehandles.push(pipeline(from_breed_rx, vec![into_hatch_tx],""));
     /* FIXME: as it stands, sending back to the into_hatch_tx will cause a send
      * error. one of the channels is probably getting prematurely dropped.
      * look into this. it would be nice to get a good, infinite "circle of life"

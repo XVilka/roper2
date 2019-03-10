@@ -1,4 +1,4 @@
-% Created 2018-05-06 Sun 16:03
+% Created 2018-10-16 Tue 08:57
 % Intended LaTeX compiler: pdflatex
 \documentclass[11pt]{article}
 \usepackage[utf8]{inputenc}
@@ -24,7 +24,7 @@
  pdftitle={The ROPER 2 Hatchery},
  pdfkeywords={},
  pdfsubject={},
- pdfcreator={Emacs 25.3.1 (Org mode 9.1.13)}, 
+ pdfcreator={Emacs 26.1 (Org mode 9.1.14)}, 
  pdflang={English}}
 \begin{document}
 
@@ -33,19 +33,19 @@
 
 
 \section{The Hatchery}
-\label{sec:org1974c72}
+\label{sec:org6961ccb}
 
 The hatchery module of \gls{roper2} consists of two logical components: a
 mechanism for performing "\gls{rop} chain embryogenesis", which maps genotypes to
 phenotypes so as to prepare them for fitness evaluation and selection (\S
-\ref{org7ef42a7}), and a mechanism to handle the concurrency plumbing for the
+\ref{org2e86c3c}), and a mechanism to handle the concurrency plumbing for the
 system -- setting up multiple \texttt{unicorn} emulator instances on separate, looping
 threads, with which the rest the system can communicate through a network of
-\texttt{channels} (\S \ref{orgbc48ae6}). 
+\texttt{channels} (\S \ref{org020bf80}). 
 
 \subsection{ROP-chain embryogenesis}
-\label{sec:org5b876f7}
-\label{org7ef42a7}
+\label{sec:orgbee2e7b}
+\label{org2e86c3c}
 
 Like its predecessor, \gls{roper}, \gls{roper2} maintains distinctions between
 genotype and phenotype, on the one hand, and between phenotype and fitness,
@@ -61,7 +61,7 @@ the CPU's stack memory, and the first address is popped into the \gls{pc},
 just as it would be in a "stack smashing" attack. The emulator is fired up,
 and everything proceeds just as it would in a "wild" \gls{rop} attack.  
 
-\lstset{language=rust,label=org14f506a,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org5b68901,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 <<bring the hatchery's dependencies into scope>>
 <<spawn the main hatchery loop>>
@@ -99,8 +99,9 @@ and everything proceeds just as it would in a "wild" \gls{rop} attack.
   }
 \end{lstlisting}
 
+
 \subsubsection{Hooks for behavioural analysis}
-\label{sec:org60e11cb}
+\label{sec:org58481a5}
 The phenotype -- or, rather, that aspect of the phenotype that developed
 \footnote{In the sense of an embryo, or a photograph.} in this particular execution
 -- is then returned in the form of a \texttt{Pod} struct. The fields you see being
@@ -141,7 +142,7 @@ with data structures that will soon be falling out of scope, and we don't
 want that data to be unnecessarily held in memory, or to have an accumulating
 series of hooks cluttering up and slowing down execution in subsequent runs.
 
-\lstset{language=rust,label=orgc08d5e5,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org7617dba,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 /* Now, clean up the hooks */
 match visit_hook {
@@ -188,7 +189,7 @@ let retlog = rtmp.borrow().to_vec().clone();
 \end{lstlisting}
 
 \subsubsection{Dealing with multiple problem cases}
-\label{sec:org65dc3b3}
+\label{sec:orgcac06f7}
 
 Depending on the task at hand, the phenotypic profile that we're
 interested in evaluating may need to include the responses of the
@@ -208,8 +209,8 @@ implementation of the \texttt{Send} trait on this struct may expose us to
 various race conditions, and other unsafe hazards. 
 
 \subsection{Concurrency plumbing}
-\label{sec:org76f0196}
-\label{orgbc48ae6}
+\label{sec:orgf244ea0}
+\label{org020bf80}
 
 We can nevertheless make great gains in efficiency by spinning
 up a set of threads at the beginning of each evaluation phase,
@@ -257,5 +258,5 @@ main hatchery thread.
 
 
 \subsection{Hatchery dependencies}
-\label{sec:org8458521}
+\label{sec:org3fbb092}
 \end{document}

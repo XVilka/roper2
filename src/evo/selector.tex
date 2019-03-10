@@ -1,4 +1,4 @@
-% Created 2018-09-16 Sun 00:07
+% Created 2019-03-10 Sun 16:03
 % Intended LaTeX compiler: pdflatex
 \documentclass[11pt]{article}
 \usepackage[utf8]{inputenc}
@@ -15,17 +15,15 @@
 \usepackage{capt-of}
 \usepackage{hyperref}
 \usepackage{listings}
-\usepackage[hidelinks]{hyperref}
 \input{../lit-header}
-\author{oblivia simplex}
 \date{\today}
 \title{Selection}
 \hypersetup{
- pdfauthor={oblivia simplex},
+ pdfauthor={},
  pdftitle={Selection},
  pdfkeywords={},
  pdfsubject={},
- pdfcreator={Emacs 25.2.2 (Org mode 9.1.13)}, 
+ pdfcreator={Emacs 26.1 (Org mode 9.1.14)}, 
  pdflang={English}}
 \begin{document}
 
@@ -36,8 +34,8 @@ Going back to editing the rust code, directly, until I can get
 this org mode interface a bit smoother.
 
 \section{Bring dependencies into scope}
-\label{sec:org66c170a}
-\lstset{language=rust,label=orgbcea56f,caption= ,captionpos=b,numbers=none}
+\label{sec:org2f3a547}
+\lstset{language=rust,label=orgf356fde,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 extern crate rand; 
 
@@ -58,7 +56,7 @@ use fit::circbuf::{CircBuf};
 \end{lstlisting}
 
 \section{Selection on a Stream}
-\label{sec:org1b91baa}
+\label{sec:org37da787}
 
 One of the interesting design decisions that crystallized in engineering
 this iteration of ROPER has been to treat the population as a cyclical
@@ -85,7 +83,7 @@ will be the winners of the tournament, and \texttt{tsize/2} will be newborns.
 
 
 \subsection{{\bfseries\sffamily TODO} Redesign this module}
-\label{sec:org32222a4}
+\label{sec:orgc810e71}
 
 Basically, we have two paths we can take, here: either commit to the stateful approach, and
 encase the creatures in RefCells \emph{from the beginning}, so that we can mutate them in-place
@@ -97,9 +95,36 @@ them on doing so, and then inject them back into the stream.
 
 
 \subsection{Spawning the selector/breeder}
-\label{sec:orgf5035d6}
+\label{sec:orge2c3edd}
 
-\lstset{language=rust,label=org5feeca3,caption= ,captionpos=b,numbers=none}
+As creatures enter the breeding thread, through the \texttt{into\_breeder\_tx}
+channel, they are assigned to a randomly chosen slot in the \texttt{arena}. 
+When a second creature is assigned to the same slot -- when there is
+a collision -- a tournament is triggered. The loser is destroyed, and
+the winner is moved to a mating pool. 
+
+When the mating pool has reached a certain capacity, its residents will
+pair off according to compatibility. Each creature will pair with the
+creature in the pool with whom it is most compatible. (We could introduce
+some degree of noise into this selection as well.) 
+
+The mating pairs then reproduce through homologous crossover, and then
+both the parents and the offspring are returned to the population stream.
+
+The arena needs:
+\begin{itemize}
+\item a channel to recv creatures from the breeder thread
+\item a channel to send creatures to the mating thread
+\item a channel to recv creatures from the mating thread
+\item a channel to send creatures back to the breeder thread
+(or to the next phase in the evolution stream)
+\end{itemize}
+
+We can probably reuse the pattern that we've already used in
+the hatchery and elsewhere. 
+
+
+\lstset{language=rust,label=org3ae3607,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 pub fn spawn_breeder(
     window_size: usize,
@@ -110,6 +135,10 @@ pub fn spawn_breeder(
 
     let sel_handle = spawn(move || {
       /* TODO */
+      for incoming in into_breeder_rx {
+        /* STUB, because the spice must flow */
+        from_breeder_tx.send(incoming);
+      }
     });
 
     (into_breeder_tx, from_breeder_rx, sel_handle)
@@ -117,7 +146,7 @@ pub fn spawn_breeder(
 \end{lstlisting}
 
 \subsection{Selection functions}
-\label{sec:orgcef4a86}
+\label{sec:org77de66d}
 
 To work with the form of homologous crossover implemented in the
 \texttt{emu::crossover} module, we may wish to use simple mate selection
@@ -137,7 +166,7 @@ to be as dense as possible, without losing the benefits of sparseness.
 (The benefit of a sparse crossover mask, of course, is that it reduces
 the probability of destructive crossover.)
 
-\lstset{language=rust,label=org47aa36a,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org2c52567,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 
   fn xover_compat(c1: u64, c2: u64) -> usize {
@@ -148,7 +177,7 @@ the probability of destructive crossover.)
 
 The static variable \texttt{MATE\_SELECTION\_FACTOR} will be used\ldots{}
 
-\lstset{language=rust,label=org98dc541,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orgef13ddd,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 
 fn tournament(selection_window: &mut VecDeque<Creature>,

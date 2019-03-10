@@ -1,9 +1,9 @@
-// [[file:~/roper2/src/emu/hatchery.org::hatch][hatch]]
-extern crate unicorn; use std::thread::{sleep, spawn, JoinHandle}; 
+// [[file:~/src/roper2/src/emu/hatchery.org::hatch][hatch]]
+extern crate unicorn; 
+use std::thread::{spawn, JoinHandle}; 
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::time::Duration;
 use emu::loader::{get_mode, read_pc, uc_general_registers, Engine};
 use par::statics::*;
 use gen;
@@ -17,8 +17,13 @@ pub fn spawn_hatchery(
     Receiver<gen::Creature>,
     JoinHandle<()>,
 ) {
-    let (from_hatch_tx, from_hatch_rx) = channel();
-    let (into_hatch_tx, into_hatch_rx) = channel();
+
+    let (from_hatch_tx, from_hatch_rx) 
+        : (Sender<gen::Creature>, Receiver<gen::Creature>) 
+        = channel();
+    let (into_hatch_tx, into_hatch_rx) 
+        : (Sender<gen::Creature>, Receiver<gen::Creature>) 
+        = channel();
 
     let handle = spawn(move || {
         let mut carousel = Vec::new();
@@ -34,23 +39,36 @@ pub fn spawn_hatchery(
 
         let mut coop = 0;
         let mut counter = 0;
+        let already_hatched_tx = from_hatch_tx.clone();
         for incoming in into_hatch_rx {
             let &(ref tx, _) = &carousel[coop];
             let tx = tx.clone();
-            tx.send(incoming);
+            /* So long as the phenotype of a Creature is uniquely determineed
+             * by its genotype, we can just skip over those creatures that
+             * have already been hatched, returning them. But this might have
+             * the unfortunate consequence that old Creatures crowd the head
+             * of the channel. We'll see how serious an issue this is when we
+             * come to it.
+             */
+            if incoming.has_hatched() {
+                tx.send(incoming);
+            } else {
+                already_hatched_tx.send(incoming);
+            }
             coop = (coop + 1) % carousel.len();
             counter += 1;
             if counter == expect {
                 break;
             };
         }
-        /* clean up the carousel */
+        /* clean up the carousel *
         while carousel.len() > 0 {
             if let Some((tx, h)) = carousel.pop() {
+              println!(")-- cleaning up {:?} --(", tx);
                 drop(tx); 
                 h.join();
             };
-        }
+        } */
     });
 
     (into_hatch_tx, from_hatch_rx, handle)
