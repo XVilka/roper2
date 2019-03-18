@@ -2,7 +2,12 @@ extern crate rand;
 use self::rand::{Rng};
 use gen::*;
 use par::statics::*;
-
+fn mutate_arithmetic <R: Rng> (allele: &Allele, rng: &mut R) -> Allele {
+  /* start basic, add more options later */
+  let delta = (rng.gen::<isize>() % 16);
+  //println!("[+] mutate_arithmetic: delta = {}", delta);
+  allele.add(delta)
+}
 /// One-point crossover, between two u64s, as bitvectors.
 fn onept_bits<R: Rng>(a: u64, b: u64, rng: &mut R) -> u64 {
     let i = rng.gen::<u64>() % 64;
@@ -54,16 +59,19 @@ fn xbits_sites<R: Rng>(
     potential_sites.sort();
     potential_sites.dedup();
     let num = (potential_sites.len() as f32 * crossover_degree).ceil() as usize;
-    if cfg!(debug_assertions) {
-        println!("{:064b}: potential sites: {:?}", xbits, &potential_sites);
-    }
 
     let mut actual_sites = rand::seq::sample_iter(&mut rng,
                                                   potential_sites.into_iter(), 
                                                   num).unwrap();
+  /*
+    if cfg!(debug_assertions) {
+        println!("{:064b}: potential sites: {:?}", xbits, &potential_sites);
+    }
+
     if cfg!(debug_assertions) {
         println!("actual sites: {:?}", &actual_sites);
     }
+     */
     actual_sites
 }
 pub fn homologous_crossover<R>(mother: &Creature,
@@ -97,12 +105,25 @@ where R: Rng, {
         let mut egg = p0.genome.alleles.clone();
         let sem = &p1.genome.alleles;
         for site in sites.iter() {
-            egg[*site] = sem[*site];
+            let codon =
+              /* only codons from the father are mutated, but
+                since the gender of the parent is decided, each time,
+                by chance, this isn't a limitation.
+             */
+                if rng.gen::<f32>() < *POINTWISE_MUTATION_RATE {
+                    mutate_arithmetic(&sem[*site], &mut rng)
+                } else {
+                    sem[*site]
+                };
+            egg[*site] = codon;
         }
+        let child_gen =
+            usize::max(p0.genome.generation, p1.genome.generation) + 1;
         let zygote = Chain {
             alleles: egg,
             metadata: Metadata::new(),
             xbits: random_bit_flip(child_xbits, &mut rng),
+            generation: child_gen,
         };
         /* The index will be filled in later, prior to filling
          * the graves of the fallen
@@ -110,6 +131,7 @@ where R: Rng, {
         if zygote.entry() != None { /* screen out the gadgetless */
             offspring.push(Creature::new(zygote, 0));
         };
+        /*
         if cfg!(debug_assertions) {
             println!("WITH XBITS {:064b}, SITES: {:?}, MATED\n{}\nAND\n{}\nPRODUCING\n{}",
                      xbits,
@@ -117,6 +139,7 @@ where R: Rng, {
                      p0, p1, &offspring[offspring.len()-1]);
             println!("************************************************************");
         }
+      */
     }
     offspring
 }

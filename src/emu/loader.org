@@ -540,7 +540,7 @@ fn thumb_calc_sp_delta(_addr: u64) -> usize {
 
 #+NAME: Mode and Arch types
 #+BEGIN_SRC rust  :tangle loader.rs
-#[derive(FromValue, IntoValue, ForeignValue, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(   Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
     Arm,
     Thumb,
@@ -565,7 +565,7 @@ impl Mode {
     }
 }
 
-#[derive(FromValue, IntoValue, ForeignValue, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(   Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Arch {
     Arm(Mode),
     Mips(Mode),
@@ -630,7 +630,7 @@ which can sometimes be a bit confusing.
 
 #+NAME: types of segments
 #+BEGIN_SRC rust  :tangle loader.rs
-  #[derive(FromValue, IntoValue, ForeignValue, Copy, Clone, PartialEq, Eq, Debug)]
+  #[derive(   Copy, Clone, PartialEq, Eq, Debug)]
   pub enum SegType {
       Null,
       Load,
@@ -675,8 +675,8 @@ which can sometimes be a bit confusing.
 #+NAME: the Seg struct
 #+BEGIN_SRC rust  :tangle loader.rs
   pub type Perm = unicorn::Protection;
- 
-  #[derive(FromValue, IntoValue, ForeignValue, PartialEq, Eq, Debug, Clone)]
+
+  #[derive(   PartialEq, Eq, Debug, Clone)]
   pub struct Seg {
       pub addr: u64,
       pub memsz: usize,
@@ -714,6 +714,7 @@ which can sometimes be a bit confusing.
               segtype: SegType::new(phdr.p_type),
               data: Vec::new(),
           };
+          println!("[from_phdr()] s = {}", s);
           let size = (s.aligned_end() - s.aligned_start()) as usize;
           s.data = vec![UNINITIALIZED_BYTE; size];
           s
@@ -868,7 +869,7 @@ lazy_static! {
 
 #+NAME: mem_image utilities
 #+BEGIN_SRC rust  :tangle loader.rs
-fn find_static_seg(addr: u64) -> Option<&'static Seg> {
+pub fn find_static_seg(addr: u64) -> Option<&'static Seg> {
     let mut this_seg = None;
     for seg in MEM_IMAGE.iter() {
         if seg.aligned_start() <= addr && addr < seg.aligned_end() {

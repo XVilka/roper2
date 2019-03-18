@@ -1,4 +1,4 @@
-% Created 2019-03-10 Sun 16:03
+% Created 2019-03-17 Sun 23:33
 % Intended LaTeX compiler: pdflatex
 \documentclass[11pt]{article}
 \usepackage[utf8]{inputenc}
@@ -34,13 +34,13 @@ Going back to editing the rust code, directly, until I can get
 this org mode interface a bit smoother.
 
 \section{Bring dependencies into scope}
-\label{sec:org2f3a547}
-\lstset{language=rust,label=orgf356fde,caption= ,captionpos=b,numbers=none}
+\label{sec:org181e2b5}
+\lstset{language=rust,label=orga005cc5,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 extern crate rand; 
 
 use std::thread::{spawn, JoinHandle};
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::cell::RefCell;
 use std::sync::{Arc,RwLock}; 
 use std::collections::VecDeque;
@@ -50,13 +50,13 @@ use self::rand::isaac::Isaac64Rng;
 
 use par::statics::*;
 use gen::genotype::*;
-use gen::phenotype::{Creature,Fitness};
+use gen::phenotype::{FitFuncs,Creature,Fitness,FitnessOps,Phenome};
 use evo::crossover::{homologous_crossover};
 use fit::circbuf::{CircBuf};
 \end{lstlisting}
 
 \section{Selection on a Stream}
-\label{sec:org37da787}
+\label{sec:org57e793b}
 
 One of the interesting design decisions that crystallized in engineering
 this iteration of ROPER has been to treat the population as a cyclical
@@ -83,7 +83,7 @@ will be the winners of the tournament, and \texttt{tsize/2} will be newborns.
 
 
 \subsection{{\bfseries\sffamily TODO} Redesign this module}
-\label{sec:orgc810e71}
+\label{sec:orgd70f7e1}
 
 Basically, we have two paths we can take, here: either commit to the stateful approach, and
 encase the creatures in RefCells \emph{from the beginning}, so that we can mutate them in-place
@@ -95,7 +95,7 @@ them on doing so, and then inject them back into the stream.
 
 
 \subsection{Spawning the selector/breeder}
-\label{sec:orge2c3edd}
+\label{sec:orge9d114d}
 
 As creatures enter the breeding thread, through the \texttt{into\_breeder\_tx}
 channel, they are assigned to a randomly chosen slot in the \texttt{arena}. 
@@ -124,21 +124,53 @@ We can probably reuse the pattern that we've already used in
 the hatchery and elsewhere. 
 
 
-\lstset{language=rust,label=org3ae3607,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orge86a67c,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 pub fn spawn_breeder(
     window_size: usize,
-    rng_seed: RngSeed,
-) -> (Sender<Creature>, Receiver<Creature>, JoinHandle<()>) {
-    let (from_breeder_tx, from_breeder_rx) = channel();
-    let (into_breeder_tx, into_breeder_rx) = channel();
-
+    hatch_tx: &SyncSender<Creature>,
+) -> (SyncSender<Creature>, Receiver<Creature>, JoinHandle<()>) {
+    let hatch_tx = hatch_tx.clone();
+    let (from_breeder_tx, from_breeder_rx) = sync_channel(*CHANNEL_SIZE);
+    let (into_breeder_tx, into_breeder_rx) = sync_channel(*CHANNEL_SIZE);
+    let mut rng_seed = RNG_SEED.clone();
     let sel_handle = spawn(move || {
-      /* TODO */
-      for incoming in into_breeder_rx {
-        /* STUB, because the spice must flow */
-        from_breeder_tx.send(incoming);
-      }
+        /* TODO */
+        let mut sel_window: Vec<Creature> = Vec::with_capacity(window_size);
+        for incoming in into_breeder_rx {
+            /* STUB, because the spice must flow */
+            let incoming : Creature = incoming;
+            //if incoming.generation() > 1 {
+            //    println!("[!] Gen {} incoming!\n{}", incoming.generation(), incoming);
+            //}
+            sel_window.push(incoming);
+            if sel_window.len() >= window_size {
+                // causing SendError on eval/log,breed //
+                let mut offspring = tournament(&mut sel_window, rng_seed);
+                while sel_window.len() > 0 {
+                    match sel_window.pop() {
+                        Some(outgoing) => {
+                            match from_breeder_tx.send(outgoing) {
+                                Ok(_) => (),
+                                Err(e) => println!("Error sending to from_breeder_tx: {:?}", e),
+                            }
+                        },
+                        None => panic!("unreachable?"),
+                    }
+                }
+                while offspring.len() > 0 {
+                    match offspring.pop() {
+                        Some(outgoing) => {
+                            match hatch_tx.send(outgoing) {
+                                Ok (_) => (),
+                                Err(e) => println!("Error sending to hatch_tx: {:?}",e),
+                            }
+                        },
+                        None => panic!("unreachable??"),
+                    }
+                }
+            }
+        }
     });
 
     (into_breeder_tx, from_breeder_rx, sel_handle)
@@ -146,7 +178,7 @@ pub fn spawn_breeder(
 \end{lstlisting}
 
 \subsection{Selection functions}
-\label{sec:org77de66d}
+\label{sec:org14164e5}
 
 To work with the form of homologous crossover implemented in the
 \texttt{emu::crossover} module, we may wish to use simple mate selection
@@ -166,7 +198,7 @@ to be as dense as possible, without losing the benefits of sparseness.
 (The benefit of a sparse crossover mask, of course, is that it reduces
 the probability of destructive crossover.)
 
-\lstset{language=rust,label=org2c52567,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org2a02461,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 
   fn xover_compat(c1: u64, c2: u64) -> usize {
@@ -177,17 +209,22 @@ the probability of destructive crossover.)
 
 The static variable \texttt{MATE\_SELECTION\_FACTOR} will be used\ldots{}
 
-\lstset{language=rust,label=orgef13ddd,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orgcbd6881,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 
-fn tournament(selection_window: &mut VecDeque<Creature>,
-              seed: RngSeed) -> (RngSeed, Vec<Creature>) {
+fn tournament(selection_window: &mut Vec<Creature>,
+              seed: RngSeed) -> Vec<Creature> {
     let mut rng = Isaac64Rng::from_seed(seed);
     /* note: seed creation should probably be its own utility function */
     let mut new_seed: [u8; 32] = [0; 32];
     for i in 0..32 { new_seed[i] = rng.gen::<u8>() }
 
-    assert!(*TSIZE as f32 * *MATE_SELECTION_FACTOR <= selection_window.len() as f32);
+
+    if (*TSIZE as f32 * *MATE_SELECTION_FACTOR > selection_window.len() as f32) {
+        println!("TSIZE = {}; MATE_SELECTION_FACTOR = {}; selection_window.len() = {}",
+                 *TSIZE, *MATE_SELECTION_FACTOR, selection_window.len());
+        panic!("aarggh");
+    };
     let mut indices = rand::seq::sample_indices(&mut rng,
                                                 selection_window.len(),
                                                 (*TSIZE as f32 * *MATE_SELECTION_FACTOR)
@@ -203,30 +240,65 @@ fn tournament(selection_window: &mut VecDeque<Creature>,
         64 - xover_compat(x1, x2)
     };
 
+  // comment to simply disable compatibility sorting
     indices.sort_by_key(compatkey);
     /* now drop the least compatible from consideration */
     indices.truncate(*TSIZE);
 
-    let fitkey = |i: &usize| {
-      0 /* FIXME */
-    };
-    /* now, sort the remaining indices by the fitness of their creatures */
-    /* TODO -- we need a pareto sorting function */
-    indices.sort_by_key(fitkey);
+    let mut max_val = 0;
+    {
+        let fitkey = |i: &usize| {
+            let i = *i;
+            let result = 
+                (&selection_window)[i]
+                .fitness
+                .as_ref()
+                .unwrap() /* FIXME bluff for debugging */
+                .mean();
+            if result > max_val { max_val = result };
+            result
+        };
+        /* now, sort the remaining indices by the fitness of their creatures */
+        /* TODO -- we need a pareto sorting function */
+        indices.sort_by_key(fitkey);
+        indices.reverse();
+    }
     /* and choose the parents and the fallen */
     // *TSIZE must be >= 4.
-    let (p0, p1) = (indices[*TSIZE-1], indices[*TSIZE-2]);
-    let (d0, d1) = (indices[0], indices[1]);
+    /* The dead */
+    let (d0, d1) = (indices[*TSIZE-1], indices[*TSIZE-2]);
+    /* The parents */
+    let (p0, p1) = (indices[0], indices[1]);
+
+
+
 
  /* I think I need to have the selection window consist of refcells of creatures, 
     instead of just naked creatures */ /* FIXME */ 
-    let (mother, father) = (&selection_window[p0], &selection_window[p1]);
-    let offspring = homologous_crossover(mother, father, &mut rng);
+    let mut offspring;
+    {
+        let mother = &selection_window[p0];
+        let father = &selection_window[p1];
+        //let dead0  = &selection_window[d0];
+        //let dead1  = &selection_window[d1];
+        //println!("** mother.fitness = {:?}; father.fitness = {:?}; dead0.fitness = {:?}; dead1.fitness = {:?}",
+        //         mother.fitness, father.fitness, dead0.fitness, dead1.fitness);
+        offspring = homologous_crossover(mother, father, &mut rng);
+        offspring[0].inherit_problems(&father);
+        offspring[1].inherit_problems(&father);
+    }
     /* now, place the offspring back in the population by inserting them
      * into the selection window
      */
-
-    (new_seed, offspring)
+    //selection_window[d0] = offspring.pop().unwrap();
+    //selection_window[d1] = offspring.pop().unwrap();
+    /* It's essential that we remove the higher index first */
+    assert!(d0 != d1);
+    let first_to_kill = usize::max(d0, d1);
+    let next_to_kill = usize::min(d0, d1);
+    selection_window.swap_remove(first_to_kill);
+    selection_window.swap_remove(next_to_kill);
+    offspring
 }
 \end{lstlisting}
 \end{document}

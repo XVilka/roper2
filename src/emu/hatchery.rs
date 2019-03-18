@@ -1,7 +1,7 @@
 // [[file:~/src/roper2/src/emu/hatchery.org::hatch][hatch]]
 extern crate unicorn; 
 use std::thread::{spawn, JoinHandle}; 
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::rc::Rc;
 use std::cell::RefCell;
 use emu::loader::{get_mode, read_pc, uc_general_registers, Engine};
@@ -12,23 +12,23 @@ use gen::phenotype::{VisitRecord, WriteRecord};
 pub fn spawn_hatchery(
     num_engines: usize,
 ) -> (
-    Sender<gen::Creature>,
+    SyncSender<gen::Creature>,
     Receiver<gen::Creature>,
     JoinHandle<()>,
 ) {
 
     let (from_hatch_tx, from_hatch_rx) 
-        : (Sender<gen::Creature>, Receiver<gen::Creature>) 
-        = channel();
+        : (SyncSender<gen::Creature>, Receiver<gen::Creature>) 
+        = sync_channel(*CHANNEL_SIZE);
     let (into_hatch_tx, into_hatch_rx) 
-        : (Sender<gen::Creature>, Receiver<gen::Creature>) 
-        = channel();
+        : (SyncSender<gen::Creature>, Receiver<gen::Creature>) 
+        = sync_channel(*CHANNEL_SIZE);
 
     let handle = spawn(move || {
         let mut carousel = Vec::new();
 
         for _ in 0..num_engines {
-            let (eve_tx, eve_rx) = channel();
+            let (eve_tx, eve_rx) = sync_channel(*CHANNEL_SIZE);
             let from_hatch_tx = from_hatch_tx.clone();
             let h = spawn(move || {
                 spawn_coop(eve_rx, from_hatch_tx);
@@ -39,10 +39,10 @@ pub fn spawn_hatchery(
         let mut coop = 0;
         let mut counter = 0;
         let already_hatched_tx = from_hatch_tx.clone();
+        let mut num_already_hatched = 0;
         for incoming in into_hatch_rx {
-            println!("* into_hatch_rx received a transmission");
             let &(ref tx, _) = &carousel[coop];
-            let tx = tx.clone();
+            let carousel_tx = tx.clone();
             /* So long as the phenotype of a Creature is uniquely determineed
              * by its genotype, we can just skip over those creatures that
              * have already been hatched, returning them. But this might have
@@ -51,30 +51,33 @@ pub fn spawn_hatchery(
              * come to it.
              */
             if incoming.has_hatched() {
-                tx.send(incoming);
-            } else {
+                num_already_hatched += 1;
                 already_hatched_tx.send(incoming);
+            } else {
+                carousel_tx.send(incoming);
+                counter += 1;
             }
             coop = (coop + 1) % carousel.len();
-            counter += 1;
-            //if counter == expect {
-            //    break;
-            //};
+            if (counter + num_already_hatched) % 100000 == 0 {
+              println!("[{} Emulations; num_already_hatched = {}; ratio new: {}]", 
+                       counter, num_already_hatched, (counter as f32 / (num_already_hatched + counter) as f32));
+            }
+            drop(tx);
         }
-        /* clean up the carousel *
+        /* clean up the carousel */
         while carousel.len() > 0 {
             if let Some((tx, h)) = carousel.pop() {
               println!(")-- cleaning up {:?} --(", tx);
                 drop(tx); 
                 h.join();
             };
-        } */
+        }
     });
 
     (into_hatch_tx, from_hatch_rx, handle)
 }
 fn spawn_coop(rx: Receiver<gen::Creature>, 
-              tx: Sender<gen::Creature>) -> () {
+              tx: SyncSender<gen::Creature>) -> () {
     /* a thread-local emulator */
     let mut emu = Engine::new(*ARCHITECTURE);
 
@@ -84,6 +87,10 @@ fn spawn_coop(rx: Receiver<gen::Creature>,
         let mut creature = incoming;
         let phenome = hatch_cases(&mut creature, &mut emu);
         creature.phenome = phenome;
+        if !creature.has_hatched() {
+            println!("[in spawn_coop] This bastard hasn't hatched!\n{}", creature);
+            std::process::exit(1);
+        }
         tx.send(creature); /* goes back to the thread that called spawn_hatchery */
     }
 }
@@ -94,6 +101,7 @@ pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine)
     {
         let mut inputs: Vec<gen::Input> = 
             creature.phenome.keys().map(|x| x.clone()).collect();
+        assert!(inputs.len() > 0);
         while inputs.len() > 0 {
             let input = inputs.pop().unwrap();
             /* This can't really be threaded, due to the unsendability of emu */

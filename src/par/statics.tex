@@ -1,4 +1,4 @@
-% Created 2018-09-15 Sat 20:05
+% Created 2019-03-17 Sun 20:51
 % Intended LaTeX compiler: pdflatex
 \documentclass[11pt]{article}
 \usepackage[utf8]{inputenc}
@@ -15,17 +15,15 @@
 \usepackage{capt-of}
 \usepackage{hyperref}
 \usepackage{listings}
-\usepackage[hidelinks]{hyperref}
 \input{../lit-header}
-\author{oblivia simplex}
 \date{\today}
 \title{Static Configuration Variables}
 \hypersetup{
- pdfauthor={oblivia simplex},
+ pdfauthor={},
  pdftitle={Static Configuration Variables},
  pdfkeywords={},
  pdfsubject={},
- pdfcreator={Emacs 25.2.2 (Org mode 9.1.13)}, 
+ pdfcreator={Emacs 26.1 (Org mode 9.1.14)}, 
  pdflang={English}}
 \begin{document}
 
@@ -34,7 +32,7 @@
 
 
 \section{Reading the INI file}
-\label{sec:org51cf5fb}
+\label{sec:org2bd9f34}
 
 First, we need to tell \gls{roper2} where to find the config file. This is
 set through the environment variable, \texttt{ROPER\_INI\_PATH}.
@@ -66,18 +64,29 @@ encoding=utf-8
 [Binary]
 path=/home/oblivia/src/roper2/elfs/x86/systemd
 
-[RNG]
-seed=de ad f0 0d 12 34 56 78 ba ad ba be c0 de fa ce
+[Random]
+seed=de ad f0 0d ba 34 56 78 ba ad ba be c0 de fa ce
 
 [Selection]
 tournament_size=4
+selection_window_size=65
+
+[Population]
+population_size=100000
+
+[Mutation]
+pointwise_mutation_rate=0.20
+
+[Concurrency]
+channel_size=100000
+num_engines=32
 \end{verbatim}
 
 Now, we want to load the entire configuration in as a static variable.
 To do this, we use the \texttt{lazy\_static!} macro, which we'll be leaning on
 pretty heavily in this module. 
 
-\lstset{language=rust,label=org0769949,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org029777f,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 lazy_static! {
     pub static ref INI: Ini = Ini::load_from_file(&*ROPER_INI_PATH)
@@ -94,7 +103,7 @@ okay if fewer than 32 bytes are specified in the \texttt{ini} file -- the remain
 bytes will just be padded with zeroes. Any excess bytes will be ignored,
 so if you can't count, no sweat.
 
-\lstset{language=rust,label=org4618c6e,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orgd0ebb7b,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 pub type RngSeed = [u8; 32];
 
@@ -105,6 +114,7 @@ lazy_static! {
                 .expect("couldn't find [Random] section in ini file");
             let seed_txt = rand_sec.get("seed")
                 .expect("couldn't get seed field from [Random] section");
+            println!("[RNG_SEED] {}", seed_txt);
             let mut seed_vec = [0u8; 32];
             let mut i = 0;
             for octet in seed_txt.split_whitespace() {
@@ -112,20 +122,20 @@ lazy_static! {
                 i += 1;
                 if i == 32 { break };
             }
-            while i < 32 { seed_vec[i] = 0 };
+            println!("[RNG_SEED] {:?}", seed_vec);
             seed_vec
         };
 }
 \end{lstlisting}
 
 \subsection{Loading the CODE\_BUFFER}
-\label{sec:org92c46ae}
+\label{sec:org86f9fa8}
 
 There's no reason to read the machine code we're targetting into memory
 more than once, and no reason to tangle up the code with passed pointers
 to this shared and immutable resource, so we might as well load that as
 a global as well.
-\lstset{language=rust,label=org9660514,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orgab0bde3,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 lazy_static! {
     pub static ref CODE_BUFFER: Vec<u8>
@@ -134,11 +144,11 @@ lazy_static! {
             let bp = match env::var("ROPER_BINARY") {
                 Ok(s)  => s.to_string(),
                 Err(_) => {
-                  INI.section(Some("Binary"))
-                     .expect("Couldn't find Binary section in INI")
-                     .get("path")
-                     .expect("Couldn't find path field in Binary section of INI")
-                     .to_string()
+                    INI.section(Some("Binary"))
+                        .expect("Couldn't find Binary section in INI")
+                        .get("path")
+                        .expect("Couldn't find path field in Binary section of INI")
+                        .to_string()
                 }
             };
             //println!("[*] Read binary path as {:?}",bp);
@@ -156,11 +166,10 @@ A more structured view on this same data is supplied by the static global,
 
 
 \subsection{Other Static Variables}
-\label{sec:org4759f27}
+\label{sec:org2386bf7}
 
 A bit too lazy to document these right now. 
-
-\lstset{language=rust,label=org8496da7,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orge6e030e,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 
 
@@ -241,7 +250,7 @@ fn lookup_f32_setting (section: &str, item: &str, default: f32) -> f32 {
 
 lazy_static! {
     pub static ref TSIZE: usize = 
-        lookup_usize_setting ("Selection", "tournament_size", 4);
+        lookup_usize_setting ("Selection", "tournament_size", 32);
 }
 
 lazy_static! {
@@ -284,12 +293,50 @@ lazy_static! {
     /* TODO read */
     pub static ref CROSSOVER_MASK_MUT_RATE: f32 = 0.2;
 }
+
+lazy_static! {
+    pub static ref POINTWISE_MUTATION_RATE: f32 =
+        lookup_f32_setting ("Mutation", "pointwise_mutation_rate", 0.01);
+}
+
+lazy_static! {
+    pub static ref CHANNEL_SIZE: usize =
+        lookup_usize_setting ("Concurrency", "channel_size", 1);
+}
+
+lazy_static! {
+    pub static ref SELECTION_WINDOW_SIZE: usize =
+        lookup_usize_setting ("Selection", "selection_window_size", 15);
+}
+
+lazy_static! {
+    pub static ref POPULATION_SIZE: usize =
+        lookup_usize_setting ("Population", "population_size", 0x1000);
+}
+
+lazy_static! {
+    pub static ref MIN_CREATURE_LENGTH: usize =
+        lookup_usize_setting ("Population", "min_creature_length", 2);
+}
+
+lazy_static! {
+    pub static ref MAX_CREATURE_LENGTH: usize =
+        lookup_usize_setting ("Population", "max_creature_length", 2);
+}
+
+
+
+lazy_static! {
+    pub static ref NUM_ENGINES: usize =
+        lookup_usize_setting("Concurrency", "num_engines", 16);
+}
+
 \end{lstlisting}
 
 \section{Dependencies}
-\label{sec:org7fecf5a}
+\label{sec:orgf631a9b}
 
-\lstset{language=rust,label=org5089f60,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org4a95dec,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 extern crate goblin;
 extern crate num;

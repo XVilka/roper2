@@ -1,4 +1,4 @@
-% Created 2019-03-10 Sun 16:36
+% Created 2019-03-17 Sun 23:26
 % Intended LaTeX compiler: pdflatex
 \documentclass[11pt]{article}
 \usepackage[utf8]{inputenc}
@@ -30,232 +30,21 @@
 \maketitle
 \tableofcontents
 
-
-\section{The Hatchery}
-\label{sec:org6d7f60c}
-
-The hatchery module of \gls{roper2} consists of two logical components: a
-mechanism for performing "\gls{rop} chain embryogenesis", which maps genotypes to
-phenotypes so as to prepare them for fitness evaluation and selection (\S
-\ref{orgbef3517}), and a mechanism to handle the concurrency plumbing for the
-system -- setting up multiple \texttt{unicorn} emulator instances on separate, looping
-threads, with which the rest the system can communicate through a network of
-\texttt{channels} (\S \ref{orgd24644f}). 
-
-\subsection{ROP-chain embryogenesis}
-\label{sec:orgc7506e4}
-\label{orgbef3517}
-
-Like its predecessor, \gls{roper}, \gls{roper2} maintains distinctions between
-genotype and phenotype, on the one hand, and between phenotype and fitness,
-on the other. The \emph{phenotype} of an individual, in this context, is its
-behaviour during execution. Execution, here, is provided by an emulated
-\gls{cpu}, into which an executable binary has already been loaded (the
-loading is handled by the \texttt{emu::loader} module, documented in \url{loader.org}).
-The individual's \emph{genotype} is serialized into its "natural form" -- a
-stack of addresses and machine words, which either dereference to locations
-in executable memory (ideally, to \emph{gadgets}) or exist to provide raw numerical
-material to be used by the instructions dereferenced. It then loaded into
-the CPU's stack memory, and the first address is popped into the \gls{pc}, 
-just as it would be in a "stack smashing" attack. The emulator is fired up,
-and everything proceeds just as it would in a "wild" \gls{rop} attack.  
-
-\lstset{language=rust,label=orgb3dbb18,caption= ,captionpos=b,numbers=none}
-\begin{lstlisting}
-<<bring the hatchery's dependencies into scope>>
-<<spawn the main hatchery loop>>
-<<spawn the subsidiary loops to divy up the workload>>
-<<develop phenotypic profiles responding to a range of problem cases>>
-  #[inline]
-  pub fn hatch(creature: &mut gen::Creature, 
-               input: &gen::Input, 
-               emu: &mut Engine) -> gen::Pod {
-      let mut payload = creature.genome.pack(input);
-      let start_addr = creature.genome.entry().unwrap();
-      /* A missing entry point should be considered an error,
-       * since we try to guard against this in our generation
-       * functions.
-       */
-      let (stack_addr, stack_size) = emu.find_stack();
-      payload.truncate(stack_size / 2);
-      let _payload_len = payload.len();
-      let stack_entry = stack_addr + (stack_size / 2) as u64;
-      emu.restore_state();
-
-      /* load payload **/
-      emu.mem_write(stack_entry, &payload)
-          .expect("mem_write fail in hatch");
-      emu.set_sp(stack_entry + *ADDR_WIDTH as u64);
-
-    <<attach hooks for tracking performance>>
-
-      let _res = emu.start(start_addr, 0, 0, 1024);
-
-    <<clean up the hooks>>
-
-      let pod = gen::Pod::new(registers, visited, writelog, retlog);
-      pod
-  }
-\end{lstlisting}
-
-
-\subsubsection{Hooks for behavioural analysis}
-\label{sec:orgf5243e1}
-The phenotype -- or, rather, that aspect of the phenotype that developed
-\footnote{In the sense of an embryo, or a photograph.} in this particular execution
--- is then returned in the form of a \texttt{Pod} struct. The fields you see being
-passed to the \texttt{Pod} constructor, here, are populated by a series of functions
-that have been hooked into the emulator, using \texttt{Unicorn}'s hook API. (The
-\texttt{Engine} struct you see at work, here, in \texttt{hatch()}, is defined in the
-\texttt{emu::loader} module as well. It is more or less just a convenient 
-encapsulation of a \texttt{Unicorn} \gls{cpu} emulator, tailored to ROPER2's needs.)
-
-The hooks are constrained, in type, in two important ways: they must be
-\texttt{'static} closures, implementing the \texttt{Fn} trait, and their signature is
-fixed in advance. They can mutate data when they are called, so long as
-that data has been suitably massaged into reference-counting, internally
-mutable cells, but they can't return values. 
-
-The list of hooks used is almost certain to grow, but for the time being
-they collect data pertaining to
-\begin{itemize}
-\item the execution path of the phenotype through memory, in the form of
-a vector of addresses visited, along with some useful information
-concerning the size of the instructions executed (to facilitate
-disassembly, when we come to analyse that path) and the hardware
-mode (which, in some \glspl{isa}, such as \gls{arm}, can change at
-runtime);
-\item the \emph{return} instructions hit. This could be gleaned from the
-execution path, but it's much more efficient to track the information
-separately. Return-type instructions are of special interest, since
-they represent the most basic form by which a \gls{rop} chain can
-maintain control over complex execution flows. This is information
-that we can profitably put to use in the fitness functions.
-\item the valid \emph{writes} performed by the individual, tracked by instruction
-address, the destination address of the write, and the size of the
-data written.
-\end{itemize}
-
-After the execution, we need to clean up the hooks, since they interact
-with data structures that will soon be falling out of scope, and we don't
-want that data to be unnecessarily held in memory, or to have an accumulating
-series of hooks cluttering up and slowing down execution in subsequent runs.
-
-\lstset{language=rust,label=orga688429,caption= ,captionpos=b,numbers=none}
-\begin{lstlisting}
-/* Now, clean up the hooks */
-match visit_hook {
-    Ok(h) => {
-        emu.remove_hook(h).unwrap();
-    }
-    Err(e) => {
-        println!("visit_hook didn't take {:?}", e);
-    }
-}
-match mem_write_hook {
-    Ok(h) => {
-        emu.remove_hook(h).unwrap();
-    }
-    Err(e) => {
-        println!("mem_write_hook didn't take {:?}", e);
-    }
-}
-match ret_hook {
-    Ok(h) => {
-        emu.remove_hook(h).unwrap();
-    }
-    Err(e) => {
-        println!("ret_hook didn't take: {:?}", e);
-    }
-}
-match indirect_jump_hook {
-    Ok(h) => {
-        emu.remove_hook(h).unwrap();
-    }
-    Err(e) => {
-        println!("indirect_jmp_hook didn't take: {:?}", e);
-    }
-}
-
-/* Get the behavioural data from the mutable vectors */
-let registers = emu.read_general_registers().unwrap();
-let vtmp = visitor.clone();
-let visited = vtmp.borrow().to_vec().clone();
-let wtmp = writelog.clone();
-let writelog = wtmp.borrow().to_vec().clone();
-let rtmp = retlog.clone();
-let retlog = rtmp.borrow().to_vec().clone();
-\end{lstlisting}
-
-\subsubsection{Dealing with multiple problem cases}
-\label{sec:orgbf54e0d}
-
-Depending on the task at hand, the phenotypic profile that we're
-interested in evaluating may need to include the responses of the
-individual to a variety of inputs, exemplars, environmental states,
-etc. It's simple enough to treat cases where the problem space \emph{isn't}
-multiple as a singleton, and so it fits comfortably enough within
-this scheme. 
-
-The \texttt{hatch} function is therefore dispatched by another, called
-\texttt{hatch\_cases}, which is little more than a \texttt{while} loop, iterating
-over the various problem cases associated with the task or environment
-of interest.
-
-Since the \texttt{Unicorn} emulator is a foreign struct, implemented in \textbf{C},
-there's no easy way to thread this portion of the program. Forcing an
-implementation of the \texttt{Send} trait on this struct may expose us to
-various race conditions, and other unsafe hazards. 
-
-\subsection{Concurrency plumbing}
-\label{sec:org3f61db3}
-\label{orgd24644f}
-
-We can nevertheless make great gains in efficiency by spinning
-up a set of threads at the beginning of each evaluation phase,
-and binding an \texttt{Engine} instance to each thread's scope. The 
-main loop of each of those threads is implemented by the function,
-\texttt{spawn\_coop}. Rather than collect and return a vector of results
-from these evaluations, \texttt{spawn\_coop} maintains a line of communication
-back to the caller of the function that called it, in the form of
-a \texttt{channel} (specifically, a \texttt{Creature} \texttt{channel}). 
-
-The concurrency paradigm being used here is more or less "the actor
-model" of concurrency. There is no shared memory, and when one of our
-"actors" (hatcheries or coops) takes possession of a \texttt{Creature}, it
-does so uniquely. No mutexes or reference counters are needed to protect
-the \texttt{Creature} from race conditions, since it never needs to be in the
-hands of two actors at the same time. Instead, we just pass \emph{ownership}
-of the \texttt{Creature} from actor to actor -- and thanks to Rust's exquisite
-ownership system, this is just a matter of transferring a handful of
-machine words. No copying or cloning is needed.\footnote{This is the concurrency model used throughout \gls{roper2}. The only actor
-  that takes a clone of a \texttt{Creature}, rather than temporarily seizing ownership
-  of it, is the \texttt{logger} actor, which performs statistical analysis on the
-  population stream, and logs data to files. This is done so to avoid having
-  the logger's relatively expensive operations block the pipeline, and for
-  this, skimming off a stream of clones is a small price to pay. The upshot,
-  as we'll see, is that the logger needs no return channel. The trip to the 
-  agent is one-way, and the clone is dispensed with afterwards.}
-
-The threads are spawned and dispatched by another looping
-thread, which is spawned, in turn, by the \texttt{spawn\_hatchery} function.
-
-This function returns almost immediately when called, 
-bearing three values to its caller: 
-
-\begin{itemize}
-\item \texttt{into\_hatch\_tx}, which is the \texttt{Sender} end of a channel that can be used 
-to transmit individuals (of type \texttt{Creature}, which at the time of arrival 
-are little more than genomes in hollow shells, whose phenotypes have not 
-yet been brought to maturity) to the \emph{genome \(\rightarrow\) phenome map}
-\item \texttt{from\_hatch\_rx}, which is the channel on which the caller (or some thread
-delegated by the caller) listens for the creatures to return, now developed
-into mature phenotypes,
-\item \texttt{handle}, the \texttt{JoinHandle} of the thread, which will be used to join the
-main hatchery thread.
-\end{itemize}
-
-
-\subsection{Hatchery dependencies}
-\label{sec:org052a0a9}
+\#[inline]
+pub fn hatch\_cases(creature: \&mut gen::Creature, emu: \&mut Engine) 
+                   -> gen::Phenome \{
+    let mut map = gen::Phenome::new();
+    \{
+        let mut inputs: Vec<gen::Input> = 
+            creature.phenome.keys().map(|x| x.clone()).collect();
+        assert!(inputs.len() > 0);
+        while inputs.len() > 0 \{
+            let input = inputs.pop().unwrap();
+            \emph{* This can't really be threaded, due to the unsendability of emu *}
+            let pod = hatch(creature, \&input, emu);
+            map.insert(input.to\_vec(), Some(pod));
+        \}
+    \}
+    map
+\}
 \end{document}

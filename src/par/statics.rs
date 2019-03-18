@@ -36,6 +36,7 @@ lazy_static! {
                 .expect("couldn't find [Random] section in ini file");
             let seed_txt = rand_sec.get("seed")
                 .expect("couldn't get seed field from [Random] section");
+            println!("[RNG_SEED] {}", seed_txt);
             let mut seed_vec = [0u8; 32];
             let mut i = 0;
             for octet in seed_txt.split_whitespace() {
@@ -43,7 +44,7 @@ lazy_static! {
                 i += 1;
                 if i == 32 { break };
             }
-            while i < 32 { seed_vec[i] = 0 };
+            println!("[RNG_SEED] {:?}", seed_vec);
             seed_vec
         };
 }
@@ -54,11 +55,11 @@ lazy_static! {
             let bp = match env::var("ROPER_BINARY") {
                 Ok(s)  => s.to_string(),
                 Err(_) => {
-                  INI.section(Some("Binary"))
-                     .expect("Couldn't find Binary section in INI")
-                     .get("path")
-                     .expect("Couldn't find path field in Binary section of INI")
-                     .to_string()
+                    INI.section(Some("Binary"))
+                        .expect("Couldn't find Binary section in INI")
+                        .get("path")
+                        .expect("Couldn't find path field in Binary section of INI")
+                        .to_string()
                 }
             };
             //println!("[*] Read binary path as {:?}",bp);
@@ -148,7 +149,7 @@ fn lookup_f32_setting (section: &str, item: &str, default: f32) -> f32 {
 
 lazy_static! {
     pub static ref TSIZE: usize = 
-        lookup_usize_setting ("Selection", "tournament_size", 4);
+        lookup_usize_setting ("Selection", "tournament_size", 32);
 }
 
 lazy_static! {
@@ -190,4 +191,41 @@ lazy_static! {
 lazy_static! {
     /* TODO read */
     pub static ref CROSSOVER_MASK_MUT_RATE: f32 = 0.2;
+}
+
+lazy_static! {
+    pub static ref POINTWISE_MUTATION_RATE: f32 =
+        lookup_f32_setting ("Mutation", "pointwise_mutation_rate", 0.01);
+}
+
+lazy_static! {
+    pub static ref CHANNEL_SIZE: usize =
+        lookup_usize_setting ("Concurrency", "channel_size", 1);
+}
+
+lazy_static! {
+    pub static ref SELECTION_WINDOW_SIZE: usize =
+        lookup_usize_setting ("Selection", "selection_window_size", 15);
+}
+
+lazy_static! {
+    pub static ref POPULATION_SIZE: usize =
+        lookup_usize_setting ("Population", "population_size", 0x1000);
+}
+
+lazy_static! {
+    pub static ref MIN_CREATURE_LENGTH: usize =
+        lookup_usize_setting ("Population", "min_creature_length", 2);
+}
+
+lazy_static! {
+    pub static ref MAX_CREATURE_LENGTH: usize =
+        lookup_usize_setting ("Population", "max_creature_length", 2);
+}
+
+
+
+lazy_static! {
+    pub static ref NUM_ENGINES: usize =
+        lookup_usize_setting("Concurrency", "num_engines", 16);
 }

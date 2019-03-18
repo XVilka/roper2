@@ -1,7 +1,9 @@
 extern crate rand;
 
 use std::thread::{spawn, JoinHandle};
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
+use self::rand::{SeedableRng,Rng};
+use self::rand::isaac::Isaac64Rng;
 
 use emu;
 use fit;
@@ -21,69 +23,110 @@ use selector::*;
  * -- reproduction routine sends them back here, to go on to hatchery
  */
 
-pub fn pipeline(rx: Receiver<Creature>, txs: Vec<Sender<Creature>>,
-                note: &'static str) -> JoinHandle<()> {
-    assert!(txs.len() > 0);
+pub fn pipeline(rx: Receiver<Creature>, tx_refs: Vec<&SyncSender<Creature>>,
+                limit: usize, note: &'static str) -> JoinHandle<()> {
+    let mut txs : Vec<SyncSender<Creature>> = Vec::new();
+    for tx_ref in tx_refs.into_iter() {
+        txs.push(tx_ref.clone());
+    }
     let h = spawn(move || {
+        let mut count = 0;
         for x in rx {
-            if txs.len() > 1 {
-                let mut tx_num = 1;
-                for tx in txs[1..].iter() {
-                    match tx.send(x.clone()) {
-                        Err(e) => println!("[tx:{}] {}: {:?}", tx_num, note, e),
-                        Ok(k) =>  println!("[tx:{}] {} ok {:?}", tx_num, note, k),
+            count += 1;
+            if limit == 0 || count < limit {
+                if txs.len() > 1 {
+                    let mut tx_num = 1;
+                    for tx in txs[1..].iter() {
+                        match tx.send(x.clone()) {
+                            Err(e) => println!("[tx:{}] {}: {:?}", tx_num, note, e),
+                            Ok(k) =>  (), //println!("[tx:{}] {} ok {:?}", tx_num, note, k),
+                        }
+                        tx_num += 1;
                     }
-                    tx_num += 1;
+                };
+                match txs[0].send(x) {
+                    Err(e) => println!("[tx:0] {}: {:?}", note, e),
+                    Ok(k) =>  (), //println!("[tx:0] {} ok {:?}", note, k),
                 }
-            };
-            match txs[0].send(x) {
-                Err(e) => println!("[tx:0] {}: {:?}", note, e),
-                Ok(k) =>  println!("[tx:0] {} ok {:?}", note, k),
+            } else {
+                println!("[!] Limit of {} on {} pipeline reached. Concluding.", limit, note);
+                for tx in txs.iter() {
+                    drop(tx)
+                }
+                std::process::exit(0);
+                
             }
         }
     });
     h
 }
 
-pub fn evolution_pipeline(num_engines: usize, num_evaluators: usize) -> () {
-    let expect = 0; /* indefinite hatchery loop */
-    /* FIXME: expect here is just a placeholder. Not sure what to do with it yet. */
-    let population_size = 4096;
 
-    let (from_seeder_rx, seed_handle) = gen::spawn_seeder(
-        population_size,
-        (2, 32),              /* length range */
-        &vec![vec![1, 2, 3]], /* fake problem set */
-        *RNG_SEED,            /* but FIXME: refresh seed! */
+pub fn evolution_pond() -> () {
+
+    let rng_seed = *RNG_SEED;
+    let mut rng = Isaac64Rng::from_seed(rng_seed);
+
+    println!("[>] spawning seeder");
+    let (seed_rx, seed_hdl) = gen::spawn_seeder(
+        *POPULATION_SIZE,
+        &vec![vec![1,2]], /* fake problem set */
     );
+ 
+//    let (refill_pond_tx, refill_pond_rx) = sync_channel(*CHANNEL_SIZE);
 
-    let (into_hatch_tx, from_hatch_rx, hatch_handle) = emu::spawn_hatchery(num_engines);
-    let (into_eval_tx, from_eval_rx, eval_handle) = fit::spawn_evaluator(num_evaluators, 4096);
-    let (into_breed_tx, from_breed_rx, breed_handle) = spawn_breeder(1024, *RNG_SEED);
-    let (into_log_tx, log_handle) = log::spawn_logger(4096, 4096);
+    println!("[>] spawning logger");
+    let (logger_tx, logger_hdl) = log::spawn_logger(*POPULATION_SIZE/10, *POPULATION_SIZE/10);
+    println!("[>] spawning hatchery");
+    let (hatch_tx, hatch_rx, hatch_hdl) = emu::spawn_hatchery(*NUM_ENGINES);
+    println!("[>] spawning evaluator");
+    let (eval_tx, eval_rx, eval_hdl) = fit::spawn_evaluator(*NUM_ENGINES, 2048);
+    println!("[>] spawning breeder");
+    let (breed_tx, breed_rx, sel_hdl) = spawn_breeder(*SELECTION_WINDOW_SIZE,
+                                                      &hatch_tx); // ?
 
-    /* now weld the pipelines together */
-    let mut pipehandles = Vec::new();
-    pipehandles.push(pipeline(from_seeder_rx, vec![into_hatch_tx.clone()],""));
-    pipehandles.push(pipeline(from_hatch_rx, vec![into_eval_tx],""));
-    pipehandles.push(pipeline(from_eval_rx, vec![into_breed_tx, into_log_tx],""));
-    pipehandles.push(pipeline(from_breed_rx, vec![into_hatch_tx],""));
-    /* FIXME: as it stands, sending back to the into_hatch_tx will cause a send
-     * error. one of the channels is probably getting prematurely dropped.
-     * look into this. it would be nice to get a good, infinite "circle of life"
-     * going, all in one pipeline.
-     */
-    /* the circle is now complete. */
 
-    seed_handle.join().unwrap();
-    hatch_handle.join().unwrap();
-    eval_handle.join().unwrap();
-    breed_handle.join().unwrap();
-    log_handle.join().unwrap();
+    let seed_hatch_pipe = pipeline(seed_rx, vec![&hatch_tx], 0, "seed/hatch");
+    let hatch_eval_pipe = pipeline(hatch_rx, vec![&eval_tx], 0, "hatch/eval");
+    let eval_breed_pipe = pipeline(eval_rx, vec![&breed_tx,
+                                                 &logger_tx],
+                                   0, "eval/breed+log");
+    
 
-    for ph in pipehandles {
-        ph.join().unwrap();
+    let mut pond : Vec<Creature> = Vec::new();
+
+    /* Initialize the pond with already hatched and evaluated creatures */
+    let mut count = 0;
+    for critter in breed_rx.iter() {
+        pond.push(critter);
+        count += 1;
+        //println!("count {}",count);
+        if pond.len() > *SELECTION_WINDOW_SIZE {
+            rng.shuffle(&mut pond);
+            for i in 0..(*SELECTION_WINDOW_SIZE) {
+                match pond.pop() {
+                    Some (critter) => {
+                        match (if critter.has_hatched() {
+                            breed_tx.send(critter)
+                        } else {
+                            hatch_tx.send(critter)
+                        }) {
+                            Ok(_) => (),
+                            Err(e) => println!("error {:?}", e),
+                        }
+                    },
+                    None => println!("No critters"),
+                }
+            }
+        }
     }
+
+    println!("[+] Population initialized.");
+
+
+    /* safety net */
+    loop {}
+
 }
 
 /* The phenotype->genotype pipeline */

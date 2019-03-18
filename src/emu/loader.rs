@@ -8,6 +8,7 @@ use std::fmt;
 use self::goblin::{elf, Object};
 use self::unicorn::*;
 use par::statics::*;
+
   pub struct Engine {
       pub uc: Box<unicorn::Unicorn>,
       pub arch: Arch,
@@ -72,6 +73,7 @@ use par::statics::*;
       pub fn restore_context(&mut self) -> Result<(), unicorn::Error> {
           self.uc.context_restore(&self.saved_context)
       }
+
       /* method for the Engine trait */
         pub fn hard_reset(&mut self) -> () {
             self.save_state();
@@ -274,13 +276,6 @@ use par::statics::*;
                       }
                   };
                   self.hook_exec_mem(_callback)
-                  /*
-                  self.uc.add_x86_insn_hook(
-                  unicorn::x86_const::InsnX86::RET,
-                  exec_start.unwrap(),
-                  exec_stop.unwrap(),
-                  callback),
-                  */
               }
               Arch::Arm(Mode::Arm) => {
                   let _callback = move |uc: &Unicorn, addr, size| {
@@ -494,12 +489,8 @@ pub fn init_emulator(
                 )
             }?;
         } else {
-            //println!("init_emulator: mapping Seg: {}",seg);
             uc.mem_map(seg.aligned_start(), seg.aligned_size(), seg.perm)?;
-            //println!("uc regions: {:?}", uc.mem_regions().unwrap());
-            //println!("               writing 0x{:x} bytes of segment data", seg.data.len());
-            uc.mem_write(seg.aligned_start(), &seg.data); /* FIXME: removed ? to try to be more tolerant... */
-            //println!("write successful");
+            uc.mem_write(seg.aligned_start(), &seg.data); 
         }
     }
     Ok(uc)
@@ -540,7 +531,7 @@ fn thumb_calc_sp_delta(_addr: u64) -> usize {
     0
 }
 
-#[derive(FromValue, IntoValue, ForeignValue, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(   Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
     Arm,
     Thumb,
@@ -565,7 +556,7 @@ impl Mode {
     }
 }
 
-#[derive(FromValue, IntoValue, ForeignValue, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(   Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Arch {
     Arm(Mode),
     Mips(Mode),
@@ -612,7 +603,7 @@ pub fn umode_from_usize(x: usize) -> unicorn::Mode {
     }
 }
 
-#[derive(FromValue, IntoValue, ForeignValue, Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(   Copy, Clone, PartialEq, Eq, Debug)]
 pub enum SegType {
     Null,
     Load,
@@ -655,7 +646,7 @@ impl SegType {
 
 pub type Perm = unicorn::Protection;
 
-#[derive(FromValue, IntoValue, ForeignValue, PartialEq, Eq, Debug, Clone)]
+#[derive(   PartialEq, Eq, Debug, Clone)]
 pub struct Seg {
     pub addr: u64,
     pub memsz: usize,
@@ -693,6 +684,7 @@ impl Seg {
             segtype: SegType::new(phdr.p_type),
             data: Vec::new(),
         };
+        println!("[from_phdr()] s = {}", s);
         let size = (s.aligned_end() - s.aligned_start()) as usize;
         s.data = vec![UNINITIALIZED_BYTE; size];
         s
@@ -813,7 +805,7 @@ lazy_static! {
         };
 }
 
-fn find_static_seg(addr: u64) -> Option<&'static Seg> {
+pub fn find_static_seg(addr: u64) -> Option<&'static Seg> {
     let mut this_seg = None;
     for seg in MEM_IMAGE.iter() {
         if seg.aligned_start() <= addr && addr < seg.aligned_end() {

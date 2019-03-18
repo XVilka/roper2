@@ -51,12 +51,25 @@ own future crossovers.
           let mut egg = p0.genome.alleles.clone();
           let sem = &p1.genome.alleles;
           for site in sites.iter() {
-              egg[*site] = sem[*site];
+              let codon =
+                /* only codons from the father are mutated, but
+                  since the gender of the parent is decided, each time,
+                  by chance, this isn't a limitation.
+               ,*/
+                  if rng.gen::<f32>() < *POINTWISE_MUTATION_RATE {
+                      mutate_arithmetic(&sem[*site], &mut rng)
+                  } else {
+                      sem[*site]
+                  };
+              egg[*site] = codon;
           }
+          let child_gen =
+              usize::max(p0.genome.generation, p1.genome.generation) + 1;
           let zygote = Chain {
               alleles: egg,
               metadata: Metadata::new(),
               xbits: random_bit_flip(child_xbits, &mut rng),
+              generation: child_gen,
           };
           /* The index will be filled in later, prior to filling
            ,* the graves of the fallen
@@ -64,6 +77,7 @@ own future crossovers.
           if zygote.entry() != None { /* screen out the gadgetless */
               offspring.push(Creature::new(zygote, 0));
           };
+          /*
           if cfg!(debug_assertions) {
               println!("WITH XBITS {:064b}, SITES: {:?}, MATED\n{}\nAND\n{}\nPRODUCING\n{}",
                        xbits,
@@ -71,6 +85,7 @@ own future crossovers.
                        p0, p1, &offspring[offspring.len()-1]);
               println!("************************************************************");
           }
+        ,*/
       }
       offspring
   }
@@ -170,17 +185,72 @@ operation.
       potential_sites.sort();
       potential_sites.dedup();
       let num = (potential_sites.len() as f32 * crossover_degree).ceil() as usize;
+    
+      let mut actual_sites = rand::seq::sample_iter(&mut rng,
+                                                    potential_sites.into_iter(), 
+                                                    num).unwrap();
+    /*
       if cfg!(debug_assertions) {
           println!("{:064b}: potential sites: {:?}", xbits, &potential_sites);
       }
 
-      let mut actual_sites = rand::seq::sample_iter(&mut rng,
-                                                    potential_sites.into_iter(), 
-                                                    num).unwrap();
       if cfg!(debug_assertions) {
           println!("actual sites: {:?}", &actual_sites);
       }
+       ,*/
       actual_sites
+  }
+#+END_SRC
+
+* Mutation
+
+Without mutation, crossover-driven evolution will eventually stagnate. 
+
+It is desirable that our mutation operators should share a certain minmal
+algebraic structure. Each should have an inverse:
+\[
+(\forall M\in S)(\forall x)(\exists y) M(x) = y \Rightarrow 
+(\exists M'\in S) M'(y) = x
+\]
+and an identity:
+\[
+(\forall M\in S)(\exists x) M(x) = x
+\]
+What this means is that over each set of mutation operators -- and
+therefore over their union -- the concatenation or succession their
+application should form a cyclic group.
+
+In practical terms, this is a generally beneficial property for genetic
+operators to possess: all else being equal, they should be designed with
+an eye towards neutrality with respect to an arbitrary choice of fitness
+functions. By ensuring that the mutation operators are involutive, or, more
+generally, that they form a cyclic concatenation group, involution just being
+the smallest nontrivial form of such a structure, with a cycle of two, we
+(imperfectly) guard against a situation where they ratchet the population into a
+small corner of the genotypic (and, consequently, the phenotypic) landscape,
+/independent of the fitness function/. (Identity is less significant, in this
+context, and is introduced into the mutation operators only
+as a way of ensuring closure.) Ratcheting occurs when the genetic
+operators are not properly balanced. In the situation where the algebra defined
+by concatenation over the mutation operators does /not/ form a cyclic group --
+when there is "no way back" from some mutation $M$ by any succession of further
+mutations -- ratcheting is inevitable. This problem is distinct from, but
+related to, the problem of genetic drift, which it exacerbates. Involutive pairs
+of operators, selected with equal probability, provide some safeguard against
+this. The /ideal/, in some sense, would be to select genetic operators that
+would engender an /ergodic/ system under a null fitness function:[fn:: Thanks to
+\aimention{Andrea Shepard} Andrea Shepard for this insight. ] one whose behaviour is evenly distributed
+over the probability landscape it inhabits. In practice, even with fitness
+anulled, evolutionary systems rarely exibit such regularity, which has some very
+interesting effects on the paths that evolution pursues.
+
+#+NAME: mutation
+#+BEGIN_SRC rust :export none :comments link
+  fn mutate_arithmetic <R: Rng> (allele: &Allele, rng: &mut R) -> Allele {
+    /* start basic, add more options later */
+    let delta = (rng.gen::<isize>() % 16);
+    //println!("[+] mutate_arithmetic: delta = {}", delta);
+    allele.add(delta)
   }
 #+END_SRC
 
@@ -206,10 +276,10 @@ the sake of convenience, sparing ourselves quite a bit of parameter clutter.
 * Putting it Together
 #+NAME: putting-it-together
 #+BEGIN_SRC rust :noweb tangle :export none :tangle crossover.rs
-  <<crossover-module-dependencies>>
-    
-  <<combining crossover masks>>
-  <<mapping masks to crossover sites>>
-  <<homologous crossover>>
+      <<crossover-module-dependencies>>
+      <<mutation>>
+      <<combining crossover masks>>
+      <<mapping masks to crossover sites>>
+      <<homologous crossover>>
 #+END_SRC
 

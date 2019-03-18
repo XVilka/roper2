@@ -2,9 +2,9 @@
 #[macro_use]
 extern crate lazy_static;
 
-extern crate ketos;
-#[macro_use]
-extern crate ketos_derive;
+//extern crate ketos;
+// #[macro_use]
+//extern crate ketos_derive;
 
 extern crate unicorn;
 

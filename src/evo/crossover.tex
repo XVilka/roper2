@@ -1,4 +1,4 @@
-% Created 2018-05-13 Sun 13:47
+% Created 2019-03-17 Sun 21:28
 % Intended LaTeX compiler: pdflatex
 \documentclass[11pt]{article}
 \usepackage[utf8]{inputenc}
@@ -15,7 +15,6 @@
 \usepackage{capt-of}
 \usepackage{hyperref}
 \usepackage{listings}
-\usepackage[hidelinks]{hyperref}
 \input{../lit-header}
 \date{\today}
 \title{Crossover in ROPER 2}
@@ -24,7 +23,7 @@
  pdftitle={Crossover in ROPER 2},
  pdfkeywords={},
  pdfsubject={},
- pdfcreator={Emacs 25.3.1 (Org mode 9.1.13)}, 
+ pdfcreator={Emacs 26.1 (Org mode 9.1.14)}, 
  pdflang={English}}
 \begin{document}
 
@@ -33,14 +32,14 @@
 
 
 \section{Homologous Crossover in ROPER}
-\label{sec:org2435cb7}
+\label{sec:org5967423}
 The idea with the crossover mask (or, as its called in the source code, the
 "\texttt{xbits}") mechanism is this: With each genome we associate a bitmask (for now,
 this is in the form of an unsigned, 64-bit integer, but this is a bit of a
 shortcut -- we'd probably like to let it be as long as the longest possible
 genome). For the first generation, this value is initialized randomly. During
 crossover, the sites of genetic exchange are determined by \emph{combining} (\S
-\ref{orgdc5bcdb}) the parents' crossover masks: crossover may occur (only) at
+\ref{orgfd1d26a}) the parents' crossover masks: crossover may occur (only) at
 those sites (mod 64) where the combined mask has a 1. Every subsequent generation
 will inherit its own crossover masks from another \emph{combination} of its parents'
 masks -- though, as we'll see, there are good reasons for selecting distinct
@@ -49,7 +48,7 @@ to generate the map of potential crossover sites should not necessarily be the
 same operation that generates the masks that the offspring will bring to their
 own future crossovers.
 
-\lstset{language=rust,label=orgf8afb86,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orgf872d64,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 pub fn homologous_crossover<R>(mother: &Creature,
                                father: &Creature,
@@ -82,12 +81,25 @@ where R: Rng, {
         let mut egg = p0.genome.alleles.clone();
         let sem = &p1.genome.alleles;
         for site in sites.iter() {
-            egg[*site] = sem[*site];
+            let codon =
+              /* only codons from the father are mutated, but
+                since the gender of the parent is decided, each time,
+                by chance, this isn't a limitation.
+             */
+                if rng.gen::<f32>() < *POINTWISE_MUTATION_RATE {
+                    mutate_arithmetic(&sem[*site], &mut rng)
+                } else {
+                    sem[*site]
+                };
+            egg[*site] = codon;
         }
+        let child_gen =
+            usize::max(p0.genome.generation, p1.genome.generation) + 1;
         let zygote = Chain {
             alleles: egg,
             metadata: Metadata::new(),
             xbits: random_bit_flip(child_xbits, &mut rng),
+            generation: child_gen,
         };
         /* The index will be filled in later, prior to filling
          * the graves of the fallen
@@ -95,6 +107,7 @@ where R: Rng, {
         if zygote.entry() != None { /* screen out the gadgetless */
             offspring.push(Creature::new(zygote, 0));
         };
+        /*
         if cfg!(debug_assertions) {
             println!("WITH XBITS {:064b}, SITES: {:?}, MATED\n{}\nAND\n{}\nPRODUCING\n{}",
                      xbits,
@@ -102,14 +115,15 @@ where R: Rng, {
                      p0, p1, &offspring[offspring.len()-1]);
             println!("************************************************************");
         }
+      */
     }
     offspring
 }
 \end{lstlisting}
 
 \subsection{Combining the Crossover Masks}
-\label{sec:org40b0b1b}
-\label{orgdc5bcdb}
+\label{sec:org0518183}
+\label{orgfd1d26a}
 
 The precise means of combining the \texttt{xbit} vectors is left open to
 experimentation, but a good starting point seems to be bitwise conjunction (the
@@ -141,7 +155,7 @@ incorporated as well: the crossover mask that the child will inherit,
 and share with its siblings, will be a uniform crossover of its
 parents', occasionally perturbed by a single bit-flip mutation.
 
-\lstset{language=rust,label=orgaf288d0,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org0e5a616,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 /// One-point crossover, between two u64s, as bitvectors.
 fn onept_bits<R: Rng>(a: u64, b: u64, rng: &mut R) -> u64 {
@@ -188,7 +202,7 @@ Once the two parents' \texttt{xbits} have been combined into a crossover mask, w
 can use it to generate a list of sites to be used in the genomic crossover
 operation. 
 
-\lstset{language=rust,label=orgf84c622,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org4f4cb75,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 fn xbits_sites<R: Rng>(
     xbits: u64,
@@ -202,22 +216,78 @@ fn xbits_sites<R: Rng>(
     potential_sites.sort();
     potential_sites.dedup();
     let num = (potential_sites.len() as f32 * crossover_degree).ceil() as usize;
-    if cfg!(debug_assertions) {
-        println!("{:064b}: potential sites: {:?}", xbits, &potential_sites);
-    }
 
     let mut actual_sites = rand::seq::sample_iter(&mut rng,
                                                   potential_sites.into_iter(), 
                                                   num).unwrap();
+  /*
+    if cfg!(debug_assertions) {
+        println!("{:064b}: potential sites: {:?}", xbits, &potential_sites);
+    }
+
     if cfg!(debug_assertions) {
         println!("actual sites: {:?}", &actual_sites);
     }
+     */
     actual_sites
 }
 \end{lstlisting}
 
+\section{Mutation}
+\label{sec:org1cf3bc2}
+
+Without mutation, crossover-driven evolution will eventually stagnate. 
+
+It is desirable that our mutation operators should share a certain minmal
+algebraic structure. Each should have an inverse:
+\[
+(\forall M\in S)(\forall x)(\exists y) M(x) = y \Rightarrow 
+(\exists M'\in S) M'(y) = x
+\]
+and an identity:
+\[
+(\forall M\in S)(\exists x) M(x) = x
+\]
+What this means is that over each set of mutation operators -- and
+therefore over their union -- the concatenation or succession their
+application should form a cyclic group.
+
+In practical terms, this is a generally beneficial property for genetic
+operators to possess: all else being equal, they should be designed with
+an eye towards neutrality with respect to an arbitrary choice of fitness
+functions. By ensuring that the mutation operators are involutive, or, more
+generally, that they form a cyclic concatenation group, involution just being
+the smallest nontrivial form of such a structure, with a cycle of two, we
+(imperfectly) guard against a situation where they ratchet the population into a
+small corner of the genotypic (and, consequently, the phenotypic) landscape,
+\emph{independent of the fitness function}. (Identity is less significant, in this
+context, and is introduced into the mutation operators only
+as a way of ensuring closure.) Ratcheting occurs when the genetic
+operators are not properly balanced. In the situation where the algebra defined
+by concatenation over the mutation operators does \emph{not} form a cyclic group --
+when there is "no way back" from some mutation \(M\) by any succession of further
+mutations -- ratcheting is inevitable. This problem is distinct from, but
+related to, the problem of genetic drift, which it exacerbates. Involutive pairs
+of operators, selected with equal probability, provide some safeguard against
+this. The \emph{ideal}, in some sense, would be to select genetic operators that
+would engender an \emph{ergodic} system under a null fitness function:\footnote{Thanks to
+\aimention{Andrea Shepard} Andrea Shepard for this insight.} one whose behaviour is evenly distributed
+over the probability landscape it inhabits. In practice, even with fitness
+anulled, evolutionary systems rarely exibit such regularity, which has some very
+interesting effects on the paths that evolution pursues.
+
+\lstset{language=rust,label=org32c675e,caption= ,captionpos=b,numbers=none}
+\begin{lstlisting}
+fn mutate_arithmetic <R: Rng> (allele: &Allele, rng: &mut R) -> Allele {
+  /* start basic, add more options later */
+  let delta = (rng.gen::<isize>() % 16);
+  //println!("[+] mutate_arithmetic: delta = {}", delta);
+  allele.add(delta)
+}
+\end{lstlisting}
+
 \section{Dependencies}
-\label{sec:org18df41a}
+\label{sec:orgdcc5585}
 
 For this to work, we'll need just a handful of dependencies: the pseudo-random
 number generator library in the \texttt{rand} crate, ROPER's own genotype structs in
@@ -227,7 +297,7 @@ a trivial implementation decision, and may change), and a few static parameter
 values that we essentially treat as immutable globals in this project, for
 the sake of convenience, sparing ourselves quite a bit of parameter clutter.
 
-\lstset{language=rust,label=orgf84a9fe,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orgdcbd749,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 extern crate rand;
 use self::rand::{Rng};
@@ -237,11 +307,11 @@ use par::statics::*;
 
 
 \section{Putting it Together}
-\label{sec:org372abd9}
-\lstset{language=rust,label=org19708a7,caption= ,captionpos=b,numbers=none}
+\label{sec:org3a04579}
+\lstset{language=rust,label=org325782f,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 <<crossover-module-dependencies>>
-
+<<mutation>>
 <<combining crossover masks>>
 <<mapping masks to crossover sites>>
 <<homologous crossover>>

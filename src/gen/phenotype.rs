@@ -17,7 +17,7 @@ use emu::loader::Mode;
 use par::statics::*;
 use log;
 
-#[derive(ForeignValue, FromValue, FromValueRef, Clone, Debug, PartialEq, Eq)]
+#[derive(   Clone, Debug, PartialEq, Eq)]
 pub struct WriteRecord {
     pub pc: u64,
     pub dest_addr: u64,
@@ -25,7 +25,7 @@ pub struct WriteRecord {
     pub size: usize,
 }
 
-#[derive(ForeignValue, FromValue, FromValueRef, Clone, Debug, PartialEq, Eq)]
+#[derive(   Clone, Debug, PartialEq, Eq)]
 pub struct VisitRecord {
     pub pc: u64,
     pub mode: Mode,
@@ -48,7 +48,7 @@ impl Display for VisitRecord {
     }
 }
 
-#[derive(ForeignValue, FromValue, FromValueRef, Clone, Debug, PartialEq)]
+#[derive(   Clone, Debug, PartialEq)]
 pub struct Pod {
     pub registers: Vec<u64>,
     pub visited: Vec<VisitRecord>,
@@ -69,6 +69,14 @@ impl Pod {
             writelog: writelog,
             retlog: retlog,
         }
+    }
+    
+    pub fn retlog(&self) -> &Vec<u64> {
+        &self.retlog
+    }
+
+    pub fn retlog_len(&self) -> usize {
+        self.retlog.len()
     }
     /// Dump a vector of strings containing the disassembly
     /// of each address visited by the phenotype.
@@ -102,11 +110,28 @@ impl Pod {
         }
         v
     }
+
+    /* FITNESS FUNCTIONS (PODWISE) */
+    /* let's start with something simple: we'll reward the number of
+     * unique returns
+     */
+
+    fn ff_uniq_retcount(&self) -> usize {
+        let mut rl = self.retlog.clone();
+        rl.sort();
+        rl.dedup();
+        //let upper_bound = 128;
+        //let retscore = usize::min(rl.len(), upper_bound);
+        //retscore as f32 / upper_bound as f32
+        //if rl.len() == 0 { 1.0 } else { 1.0 / rl.len() as f32 }
+        self.retlog.len()/2 + rl.len() /* setting 0 as least fitness rather than 1.0
+         * may turn out to be less restrictive */
+    }
+
 }
-
-//unsafe impl Send for Pod {}
-
-/* Retain the Pod after hatching. Initialized genomes in an otherwise
+    //unsafe impl Send for Pod {}
+    
+    /* Retain the Pod after hatching. Initialized genomes in an otherwise
  * empty Pod. Or with an Option<Pod>. We only ever need to hatch a
  * genome /once/ -- even with fitness sharing, we can just re-evaluate
  * the hatched phenome with different parameters. But that part of the
@@ -117,8 +142,68 @@ impl Pod {
 
 pub type Input = Vec<u64>; /* a static reference would be better FIXME */
 pub type Phenome = HashMap<Input, Option<Pod>>;
-pub type Fitness = Vec<f32>;
+pub type Fitness = Vec<usize>;
 
+pub trait FitnessOps {
+    fn mean(&self) -> usize;
+}
+
+impl FitnessOps for Fitness {
+    fn mean(&self) -> usize {
+       self.iter().sum::<usize>() / self.len()
+    }
+}
+
+pub trait FitFuncs {
+    fn avg_retlog_len(&self) -> usize;
+    fn mean_podwise_fitness<F>(&self, ff: F) -> usize where F: FnMut(&Pod) -> usize;
+    fn ff_mean_retcount(&self) -> usize;
+}
+
+impl FitFuncs for Phenome {
+
+    fn avg_retlog_len(&self) -> usize {
+        let mut sum = 0;
+        let mut count = 0;
+        for (_input, op_pod) in self.iter() {
+            match op_pod {
+                Some(pod) => {
+                    count += 1;
+                    sum += pod.retlog.len();
+                },
+                None => (),
+            }
+        }
+        if count == 0 {
+            0
+        } else {
+            sum / count
+        }
+    }
+
+    fn mean_podwise_fitness<F>(&self, ff: F) -> usize
+    where
+        F: FnMut(&Pod) -> usize,
+    {
+        let scores = self.values()
+            .filter(| &pod | *pod != None)
+            .map(| ref pod | pod.as_ref().unwrap())
+            .map(ff)
+            .collect::<Vec<usize>>();
+        //println!("[mean_podwise_fitness] {:?}", scores);
+        if scores.len() == 0 {
+            0
+        } else {
+            scores.iter().sum::<usize>() / scores.len()
+        }
+    }
+
+    fn ff_mean_retcount(&self) -> usize {
+        self.mean_podwise_fitness(Pod::ff_uniq_retcount)
+    }
+
+ 
+}
 
 pub trait Pareto {
     fn dominated_by(&self, other: &Fitness) -> bool;
@@ -131,14 +216,14 @@ impl Pareto for Fitness {
         for (x,y) in self.iter().zip(other.iter()) {
             if (x > y) {
                 dom = false;
-                break;
+                break
             }
         }
         dom
     }
 }
 
-#[derive(ForeignValue, IntoValue, FromValueRef, Debug, Clone)]
+#[derive(   Debug, Clone)]
 pub struct Creature {
     pub genome: Chain,
     pub phenome: Phenome,
@@ -208,6 +293,17 @@ impl Creature {
         }
     }
 
+    pub fn inherit_problems(&mut self, parent: &Creature) -> () {
+        let mut larval_phenome = Phenome::new();
+        let mut has_input = false;
+        for (input, _) in parent.phenome.iter() {
+            larval_phenome.insert(input.clone(), None);
+            has_input = true;
+        }
+        assert!(has_input);
+        self.phenome = larval_phenome;
+    }
+
     pub fn ab_fit(&self) -> Option<f32> {
         match self.metadata.0.get("ab_fit") {
             None => None,
@@ -264,7 +360,11 @@ impl Creature {
      * phenotype has developed -- and false otherwise.
      */
     pub fn has_hatched(&self) -> bool {
-        !self.phenome.is_empty()
+        0 < self.phenome.iter().filter(|(_,v)| v != &&None).count()
+    }
+
+    pub fn generation(&self) -> usize {
+        self.genome.generation
     }
 }
 

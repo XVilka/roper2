@@ -2,19 +2,48 @@ extern crate rand;
 
 use std::fmt::Display;
 use std::fmt;
+use std::ops::*;
 use std::collections::HashMap;
-use emu::loader::{align_inst_addr, Mode, Seg, MEM_IMAGE};
+use emu::loader::{find_static_seg, align_inst_addr, Mode, Seg, MEM_IMAGE};
 use par::statics::*;
 
 use self::rand::Rng;
 
-#[derive(IntoValue, StructValue, ForeignValue, FromValue, FromValueRef, Clone, Copy, Debug,
+#[derive(     Clone, Copy, Debug,
          PartialEq, Eq)]
 pub struct Gadget {
     pub ret_addr: u64,
     pub entry: u64,
     pub sp_delta: usize,
     pub mode: Mode,
+}
+
+impl Gadget {
+
+    fn add(self, other: i64) -> Gadget {
+        let seg = find_static_seg(self.entry);
+        match seg {
+            Some(seg) => {
+                //println!("[+] Seg: {}", seg);
+                let offset = self.entry as i64 - seg.addr as i64;
+                let new_offset = (offset + other) % seg.memsz as i64;
+                //println!("[+] seg.addr = 0x{:x}, offset = 0x{:x}, new_offset = 0x{:x}", seg.addr, offset, new_offset);
+                let new_entry = seg.addr + new_offset as u64;
+                //println!("[+] Adding {} to gadget with entry 0x{:x} to create gadget with entry 0x{:x}", other, self.entry, new_entry);
+                Gadget {
+                    ret_addr: self.ret_addr, /* TODO: Update ret_addr with analysis */
+                    entry: new_entry,
+                    sp_delta: self.sp_delta, /* TODO: Update with analysis */
+                    mode: self.mode, /* TODO: update if in ARM and other is odd */
+                }
+            },
+            None => {
+                println!("[x] Couldn't find segment for address 0x{:x}!", self.entry);
+                self.clone()
+            }
+        }
+    }
+
 }
 //unsafe impl Send for Gadget {}
 
@@ -33,13 +62,13 @@ impl Display for Gadget {
     }
 }
 
-#[derive(ForeignValue, FromValue, FromValueRef, IntoValue, Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(    Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Endian {
     Big,
     Little,
 }
 
-#[derive(ForeignValue, FromValue, FromValueRef, IntoValue, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(    Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Allele {
     //Const(u64),
     Input(usize),
@@ -53,6 +82,18 @@ impl Allele {
             _ => None,
         }
     }
+
+    pub fn add (&self, addend: isize) -> Self {
+        match self {
+            /* FIXME: Assuming limit of 256 input slots, but hardcoded... */
+            &Allele::Input(n)  => Allele::Input(
+                ((n as isize + addend) % 256) as usize
+            ),
+            &Allele::Gadget(n) => Allele::Gadget(n.add(addend as i64)),
+        }
+    }
+
+
 }
 //unsafe impl Send for Allele {}
 
@@ -66,11 +107,12 @@ impl Display for Allele {
     }
 }
 
-#[derive(StructValue, ForeignValue, FromValue, FromValueRef, Clone, Debug, PartialEq)]
+#[derive(    Clone, Debug, PartialEq)]
 pub struct Chain {
     pub alleles: Vec<Allele>,
     pub metadata: Metadata,
     pub xbits: u64, /* used to coordinate crossover and speciation */
+    pub generation: usize,
 }
 
 //unsafe impl Send for Chain {}
@@ -96,11 +138,16 @@ impl Display for Chain {
             pad_offset += gad.sp_delta-1;
         }
         */
-        write!(f, "\tXBITS: {:064b}\n", self.xbits)
+        write!(f, "\tXBITS: {:064b}\n", self.xbits);
+        write!(f, "\tGEN: {}\n", self.generation)
     }
 }
 
 impl Chain {
+    pub fn len(&self) -> usize {
+        self.alleles.len()
+    }
+    
     pub fn pack(&self, input: &Vec<u64>) -> Vec<u8> {
         let mut p: Vec<u8> = Vec::new();
         /*
@@ -181,7 +228,8 @@ impl Chain {
 
         let mut alleles: Vec<Allele> = Vec::new();
         let (min_len, max_len) = len_range;
-        let glen = rng.gen::<usize>() % (max_len - min_len) + min_len;
+        let range = usize::max(1, max_len - min_len);
+        let glen = rng.gen::<usize>() % range + min_len;
 
         for _ in 0..glen {
             let seg = &exec_segs[rng.gen::<usize>() % exec_segs.len()];
@@ -226,6 +274,7 @@ impl Chain {
             alleles: alleles,
             xbits: xbits,
             metadata: Metadata::new(),
+            generation: 0,
         };
 
         genome
@@ -243,7 +292,7 @@ impl Chain {
  * Accessor functions will provide an easy interface.
  */
 
-#[derive(ForeignValue, FromValue, IntoValue, Clone, Debug, PartialEq)]
+#[derive(   Clone, Debug, PartialEq)]
 pub struct Metadata(pub HashMap<&'static str, f32>);
 impl Metadata {
     pub fn new() -> Self {

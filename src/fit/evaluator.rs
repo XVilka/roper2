@@ -1,8 +1,9 @@
 use std::thread::{spawn, JoinHandle};
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, RwLock};
 
 use gen::*;
+use par::statics::*;
 use circbuf::CircBuf;
 
 // use ketos::{Interpreter,FromValueRef};
@@ -17,19 +18,20 @@ use circbuf::CircBuf;
  */
 pub fn spawn_evaluator(
     num_evaluators: usize,
-    circbuf_size: usize,
-) -> (Sender<Creature>, Receiver<Creature>, JoinHandle<()>) {
-    let (from_eval_tx, from_eval_rx) = channel();
-    let (into_eval_tx, into_eval_rx) = channel();
+    selection_window_size: usize,
+) -> (SyncSender<Creature>, Receiver<Creature>, JoinHandle<()>) {
+    let (from_eval_tx, from_eval_rx) = sync_channel(*CHANNEL_SIZE);
+    let (into_eval_tx, into_eval_rx) = sync_channel(*CHANNEL_SIZE);
 
-    let circbuf = Arc::new(RwLock::new(CircBuf::new(circbuf_size)));
+    println!("> in spawn_evaluator");
+    let circbuf = Arc::new(RwLock::new(CircBuf::new(selection_window_size)));
 
     let eval_handle = spawn(move || {
         /* Here, we use the same pattern that we did in spawn_hatchery */
         let mut carousel = Vec::new();
         let reading_window = circbuf.clone();
         for _ in 0..num_evaluators {
-            let (eval_tx, eval_rx) = channel();
+            let (eval_tx, eval_rx) = sync_channel(*CHANNEL_SIZE);
             let tx = from_eval_tx.clone();
             let window = reading_window.clone();
             /* Pass the slave_eval the sender received by this function, so
@@ -67,7 +69,7 @@ pub fn spawn_evaluator(
 
 fn slave_eval(
     eval_rx: Receiver<Creature>,
-    eval_tx: Sender<Creature>,
+    eval_tx: SyncSender<Creature>,
     _sliding_window: Arc<RwLock<CircBuf>>,
 ) -> () {
     /*
@@ -89,41 +91,15 @@ fn slave_eval(
         //let f = interp.call("eval-fitness",
         //                    (creature).into()).unwrap();
         //let fit = f32::from_value_ref(&f).unwrap();
-        let fit = 0.5; /* FIXME Placeholder */
-        creature.fitness = Some(vec![mean_podwise_fitness(&creature.phenome,
-                                                          basic_retcount_per_pod_ff)]);
-        if creature.fitness.as_ref().unwrap()[0] > 2.0 {
-            println!("{:?}", &creature.fitness);
+        creature.fitness =
+            Some(vec![creature.phenome.ff_mean_retcount()]);
+        if creature.fitness.as_ref().unwrap().mean() > 0 {
+            //println!("[in slave_eval] {:?}", &creature.fitness);
         };
+        assert!(creature.has_hatched());
         eval_tx.send(creature);
     }
 }
-
-fn mean_podwise_fitness<F>(phenome: &Phenome, ff: F) -> f32
-where
-    F: FnMut(&Option<Pod>) -> f32,
-{
-    let scores = phenome.values()
-        .map(ff)
-        .collect::<Vec<f32>>();
-    scores.iter().sum::<f32>() / scores.len() as f32
-}
-
-/* let's start with something simple: we'll reward the number of
- * unique returns
- */
-fn basic_retcount_per_pod_ff(pod: &Option<Pod>) -> f32 {
-    let mut rl = pod.as_ref().unwrap().retlog.clone();
-    rl.sort();
-    rl.dedup();
-    //let upper_bound = 128;
-    //let retscore = usize::min(rl.len(), upper_bound);
-    //retscore as f32 / upper_bound as f32
-    //if rl.len() == 0 { 1.0 } else { 1.0 / rl.len() as f32 }
-    rl.len() as f32 /* setting 0 as least fitness rather than 1.0
-                     * may turn out to be less restrictive */
-}
-
 /***
  * Various fitness functions, that can dispatches from slave_eval.
  */
