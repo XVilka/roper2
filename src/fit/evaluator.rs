@@ -92,10 +92,12 @@ fn slave_eval(
         //                    (creature).into()).unwrap();
         //let fit = f32::from_value_ref(&f).unwrap();
         creature.fitness =
-            Some(vec![creature.phenome.ff_mean_retcount()]);
-        if creature.fitness.as_ref().unwrap().mean() > 0 {
-            //println!("[in slave_eval] {:?}", &creature.fitness);
-        };
+            Some(vec![
+                /* Here's where you list the fitness scores */
+                creature.phenome.ff_mean_uniq_retcount(),
+                creature.phenome.ff_mean_retcount(),
+                creature.phenome.ff_mean_writecount(),
+            ]);
         assert!(creature.has_hatched());
         eval_tx.send(creature);
     }

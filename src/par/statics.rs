@@ -124,13 +124,16 @@ lazy_static! {
 }
 
 fn lookup_usize_setting (section: &str, item: &str, default: usize) -> usize {
+    let default = format!("{}", default); /* KLUDGE */ 
+    let str_setting = lookup_string_setting(section, item, default);
+    (&str_setting).parse::<usize>().unwrap()
+}
+
+fn lookup_string_setting (section: &str, item: &str, default: String) -> String {
     let sec = INI.section(Some(section.to_owned()));
-    let dstr = &format!("{}",default); /* KLUDGE */
     match sec {
         None => default,
-        Some(s) => s.get(item).unwrap_or(&dstr)
-            .parse::<usize>()
-            .unwrap(),
+        Some(s) => s.get(item).unwrap_or(&default).to_string()
     }
 }
 
@@ -180,7 +183,11 @@ pub enum MaskOp {
 
 lazy_static! {
     /* TODO read from config file */
-    pub static ref CROSSOVER_MASK_COMBINER: MaskOp = MaskOp::And;
+    pub static ref CROSSOVER_MASK_COMBINER: MaskOp = MaskOp::Xor;
+    /* I may have stumbled upon something interesting here. using Xor masks
+    on the xbits appears to forestall premature convergence! Which makes sense, 
+    if you think about it -- it forces crossover to at most periodically cycle
+    around a fixed genotype, giving the gene pool a bit more room to breathe. */
 }
 
 lazy_static! {
@@ -228,4 +235,10 @@ lazy_static! {
 lazy_static! {
     pub static ref NUM_ENGINES: usize =
         lookup_usize_setting("Concurrency", "num_engines", 16);
+}
+
+
+lazy_static! {
+    pub static ref LOG_DIRECTORY: String =
+        lookup_string_setting("Logging", "log_directory", "./logs".to_string());
 }

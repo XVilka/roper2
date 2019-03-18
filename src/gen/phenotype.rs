@@ -25,6 +25,28 @@ pub struct WriteRecord {
     pub size: usize,
 }
 
+
+pub fn collapse_writelog(writelog: &Vec<WriteRecord>) -> Vec<WriteRecord> {
+    /* create order preserving set (?), keyed to address
+    for each record, in order of execution, clobber any existing
+    record that writes to the same address */
+    /* each item is a pair: order of execution, write record */
+    let mut record: HashMap<u64, (usize, WriteRecord)> = HashMap::new();
+    let mut order_of_exec = 0;
+    for wr in writelog.iter() {
+        record.insert(wr.dest_addr, (order_of_exec, wr.clone()));
+        order_of_exec += 1;
+    }
+    let mut collapsed = record.values().collect::<Vec<&(usize, WriteRecord)>>();
+    collapsed.sort_by_key(|(ord,_)| ord);
+    let mut result = Vec::new();
+    for (_,w) in collapsed {
+        result.push(w.clone())
+    }
+    result
+}
+
+
 #[derive(   Clone, Debug, PartialEq, Eq)]
 pub struct VisitRecord {
     pub pc: u64,
@@ -66,7 +88,7 @@ impl Pod {
         Pod {
             registers: registers,
             visited: visited,
-            writelog: writelog,
+            writelog: collapse_writelog(&writelog),
             retlog: retlog,
         }
     }
@@ -77,6 +99,30 @@ impl Pod {
 
     pub fn retlog_len(&self) -> usize {
         self.retlog.len()
+    }
+
+    pub fn collapse_writelog(&self) -> Vec<WriteRecord> {
+        /* create order preserving set (?), keyed to address
+        for each record, in order of execution, clobber any existing
+        record that writes to the same address */
+        /* each item is a pair: order of execution, write record */
+        let mut record: HashMap<u64, (usize, WriteRecord)> = HashMap::new();
+        let mut order_of_exec = 0;
+        for wr in self.writelog.iter() {
+            record.insert(wr.dest_addr, (order_of_exec, wr.clone()));
+            order_of_exec += 1;
+        }
+        let mut collapsed = record.values().collect::<Vec<&(usize, WriteRecord)>>();
+        collapsed.sort_by_key(|(ord,_)| ord);
+        let mut result = Vec::new();
+        for (_,w) in collapsed {
+            result.push(w.clone())
+        }
+        result
+    }
+
+    pub fn writelog_len(&self) -> usize {
+        self.writelog.len()
     }
     /// Dump a vector of strings containing the disassembly
     /// of each address visited by the phenotype.
@@ -124,7 +170,7 @@ impl Pod {
         //let retscore = usize::min(rl.len(), upper_bound);
         //retscore as f32 / upper_bound as f32
         //if rl.len() == 0 { 1.0 } else { 1.0 / rl.len() as f32 }
-        self.retlog.len()/2 + rl.len() /* setting 0 as least fitness rather than 1.0
+        rl.len() /* setting 0 as least fitness rather than 1.0
          * may turn out to be less restrictive */
     }
 
@@ -142,22 +188,24 @@ impl Pod {
 
 pub type Input = Vec<u64>; /* a static reference would be better FIXME */
 pub type Phenome = HashMap<Input, Option<Pod>>;
-pub type Fitness = Vec<usize>;
+pub type Fitness = Vec<f32>;
 
 pub trait FitnessOps {
-    fn mean(&self) -> usize;
+    fn mean(&self) -> f32;
 }
 
 impl FitnessOps for Fitness {
-    fn mean(&self) -> usize {
-       self.iter().sum::<usize>() / self.len()
+    fn mean(&self) -> f32{
+       self.iter().sum::<f32>() / self.len() as f32
     }
 }
 
 pub trait FitFuncs {
     fn avg_retlog_len(&self) -> usize;
-    fn mean_podwise_fitness<F>(&self, ff: F) -> usize where F: FnMut(&Pod) -> usize;
-    fn ff_mean_retcount(&self) -> usize;
+    fn mean_podwise_fitness<F>(&self, ff: F) -> f32 where F: FnMut(&Pod) -> usize;
+    fn ff_mean_uniq_retcount(&self) -> f32;
+    fn ff_mean_retcount(&self) -> f32;
+    fn ff_mean_writecount(&self) -> f32;
 }
 
 impl FitFuncs for Phenome {
@@ -181,7 +229,7 @@ impl FitFuncs for Phenome {
         }
     }
 
-    fn mean_podwise_fitness<F>(&self, ff: F) -> usize
+    fn mean_podwise_fitness<F>(&self, ff: F) -> f32
     where
         F: FnMut(&Pod) -> usize,
     {
@@ -192,14 +240,22 @@ impl FitFuncs for Phenome {
             .collect::<Vec<usize>>();
         //println!("[mean_podwise_fitness] {:?}", scores);
         if scores.len() == 0 {
-            0
+            0.0
         } else {
-            scores.iter().sum::<usize>() / scores.len()
+            scores.iter().sum::<usize>() as f32 / scores.len() as f32
         }
     }
 
-    fn ff_mean_retcount(&self) -> usize {
+    fn ff_mean_uniq_retcount(&self) -> f32 {
         self.mean_podwise_fitness(Pod::ff_uniq_retcount)
+    }
+
+    fn ff_mean_retcount(&self) -> f32 {
+        self.mean_podwise_fitness(Pod::retlog_len)
+    }
+
+    fn ff_mean_writecount(&self) -> f32 {
+        self.mean_podwise_fitness(Pod::writelog_len)
     }
 
  

@@ -104,7 +104,9 @@ where R: Rng, {
         i += 1;
         let mut egg = p0.genome.alleles.clone();
         let sem = &p1.genome.alleles;
-        for site in sites.iter() {
+        for site in /*0..bound { // FIXME seeing if xbits help // */
+            sites.iter() {
+            //let site = &site;
             let codon =
               /* only codons from the father are mutated, but
                 since the gender of the parent is decided, each time,

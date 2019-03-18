@@ -215,7 +215,6 @@ The static variable ~MATE_SELECTION_FACTOR~ will be used...
       /* now drop the least compatible from consideration */
       indices.truncate(*TSIZE);
 
-      let mut max_val = 0;
       {
           let fitkey = |i: &usize| {
               let i = *i;
@@ -225,20 +224,104 @@ The static variable ~MATE_SELECTION_FACTOR~ will be used...
                   .as_ref()
                   .unwrap() /* FIXME bluff for debugging */
                   .mean();
-              if result > max_val { max_val = result };
-              result
+              (result * 10000.00) as usize
           };
           /* now, sort the remaining indices by the fitness of their creatures */
           /* TODO -- we need a pareto sorting function */
           indices.sort_by_key(fitkey);
           indices.reverse();
       }
+      /* TODO: Pareto ranking */
+      /*
+      Instead of /sorting/ the indices, filter or partition them according to
+      pareto dominance. The filter function would look like this:
+
+      (Naive implementation -- needs to be optimized, since it looks quadratic)
+       ,*/
+      let mut pareto_front : Vec<usize>;
+      { /* block to contain immutable borrow of the window */
+           let pareto_filter = | index: &&usize | {
+               let fvec = &selection_window[**index].fitness.as_ref().unwrap();
+               /* fvec is dominated if there exists another fitness vector
+               fvec2 in selection_window such that fvec2[i] > fvec[i] for
+               all i under fvec.len() */
+               let len = fvec.len();
+               let num_dominators = indices.iter()
+                   .filter(| i | {
+                       if i == index { return false };
+                       let c = &selection_window[**i];
+                       let fvec_d = c.fitness.as_ref().unwrap();
+                       let mut result = true;
+                       for i in 0..len {
+                           if result == false { break };
+                           if fvec[i] >= fvec_d[i] {
+                             //  println!("[PARETO]=[{}]=> {:?} >= {:?}", index, fvec[i], fvec_d[i]);
+                               result = false;
+                           } else {
+                               //println!("[PARETO]=[{}]=> {:?} <  {:?}", index, fvec[i], fvec_d[i]);
+                           }
+                       }
+                       if result {
+                           //println!("[PARETO]=[{}]=> fvec {:?} is DOMINATED by fvec_d {:?}", index, fvec, fvec_d);
+                       } else {
+                          // println!("[PARETO]=[{}]=> fvec {:?} is not dominated by fvec_d {:?}", index, fvec, fvec_d);
+                       }
+                       result
+                   })
+                   .count();
+               //println!("[PARETO] num_dominators of {:?} == {}", fvec, num_dominators);
+               num_dominators == 0 /* return true only for the pareto front */
+           };
+           pareto_front = indices.iter()
+           .filter(pareto_filter)
+           .map(|n| *n)
+           .collect::<Vec<usize>>();
+  /*
+           let for_show = indices.iter() .map(|i| ((selection_window[*i]).fitness.as_ref().unwrap().clone())) .collect::<Vec<Vec<usize>>>();
+           println!("[PARETO] pareto_filter results: {:?}",
+                    indices.iter().map(|i| (*i, pareto_filter(&i))).collect::<Vec<(usize,bool)>>());
+           println!("[PARETO] fvecs: {:?}", for_show);
+           println!("[PARETO] indices = {:?}", indices);
+           println!("[PARETO] Front: {:?}", pareto_front);
+  ,*/
+           rng.shuffle(&mut pareto_front);
+      }
+      /*
+
+      ,*/
       /* and choose the parents and the fallen */
       // *TSIZE must be >= 4.
       /* The dead */
-      let (d0, d1) = (indices[*TSIZE-1], indices[*TSIZE-2]);
       /* The parents */
-      let (p0, p1) = (indices[0], indices[1]);
+      assert!(pareto_front.len() >= 1);
+      let (p0, p1) : (usize, usize);
+      p0 = pareto_front[0];
+      if pareto_front.len() >= 2 {
+          p1 = pareto_front[1];
+      } else {
+          p1 = indices[0];
+      }
+      //let (d0, d1) = (indices[*TSIZE-1], indices[*TSIZE-2]);
+      /* Consider filtering against the pareto front instead of the parent pair */
+      let mut dead_meta_idx = *TSIZE-1;
+      assert!(*TSIZE > 2);
+      while indices[dead_meta_idx] == p0 || indices[dead_meta_idx] == p1 {
+          dead_meta_idx -= 1;
+          assert!(dead_meta_idx >= 0);
+      }
+      let d0 = indices[dead_meta_idx];
+      dead_meta_idx -= 1;
+      while indices[dead_meta_idx] == p0 || indices[dead_meta_idx] == p1 {
+          dead_meta_idx -= 1;
+          assert!(dead_meta_idx >= 0);
+      }
+      let d1 = indices[dead_meta_idx];
+
+      assert!(p0 != d0);
+      assert!(p0 != d1);
+      assert!(p1 != d0);
+      assert!(p1 != d1);
+      //let (p0, p1) = (indices[0], indices[1]);
 
 
 
@@ -271,3 +354,9 @@ The static variable ~MATE_SELECTION_FACTOR~ will be used...
       offspring
   }
 #+END_SRC
+
+* TODO implement a carousel mechanism in the selector
+
+I think the selector component might be a bit of a bottleneck right now. 
+Implement a carousel, like you did for the evaluator and the hatchery. 
+This will help balance the load. 

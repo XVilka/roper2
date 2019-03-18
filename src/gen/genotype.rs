@@ -23,12 +23,13 @@ impl Gadget {
     fn add(self, other: i64) -> Gadget {
         let seg = find_static_seg(self.entry);
         match seg {
+            /* Guard against overflow! FIXME */
             Some(seg) => {
                 //println!("[+] Seg: {}", seg);
                 let offset = self.entry as i64 - seg.addr as i64;
                 let new_offset = (offset + other) % seg.memsz as i64;
                 //println!("[+] seg.addr = 0x{:x}, offset = 0x{:x}, new_offset = 0x{:x}", seg.addr, offset, new_offset);
-                let new_entry = seg.addr + new_offset as u64;
+                let new_entry = (seg.addr as i64 + new_offset) as u64;
                 //println!("[+] Adding {} to gadget with entry 0x{:x} to create gadget with entry 0x{:x}", other, self.entry, new_entry);
                 Gadget {
                     ret_addr: self.ret_addr, /* TODO: Update ret_addr with analysis */

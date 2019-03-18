@@ -8,7 +8,57 @@ use par::statics::*;
 
 /* the statistical functions can be defined as methods on
  * CircBuf
+
  */
+
+/* just print to stdout for now, we'll do the file bit later */
+fn log_stats(stats: &Vec<(&'static str, f32)>) -> ()
+{
+    let mut row = String::new();
+    let num_stats = stats.len();
+    let mut counter = 0;
+    for (_name, stat) in stats.iter() {
+        counter += 1;
+        row.push_str(&format!("{:6.6}", stat));
+        if counter < num_stats {
+            row.push_str("\t")
+        } else {
+            row.push_str("\n")
+        }
+    }
+    print!("{}",row)
+}
+/* the point of passing a vector of pairs each time is just to make
+   the logging code easier to read and maintain. The alternative is to
+   pass the headers, explicitly, at the beginning, and then an unlabelled
+   sequence of floats every subsequent time.
+ */
+fn log_header(stats: &Vec<(&'static str, f32)>) -> ()
+{
+    let mut row = String::new();
+    let num_stats = stats.len();
+    let mut counter = 0;
+    for (name, _stat) in stats.iter() {
+        counter += 1;
+        row.push_str(&format!("{}", name));
+        if counter < num_stats {
+            row.push_str("\t")
+        } else {
+            row.push_str("\n")
+        }
+    }
+    print!("{}",row)
+}
+
+fn log(stats: &Vec<(&'static str, f32)>, counter: usize) -> () {
+    if counter == 0 {
+        log_header(&stats)
+    };
+    log_stats(&stats)
+}
+
+
+
 
 /// The logger sits at the receiving end of a one-way channel.
 /// It's best to send cloned data to it, since you won't get it back.
@@ -22,8 +72,9 @@ pub fn spawn_logger(circbuf_size: usize, log_freq: usize) -> (SyncSender<Creatur
 
     let window = circbuf.clone();
     let _stat_handle = spawn(move || {
-        let mut max_fit = 0.0;
+        let mut max_fitness = 0.0;
         let mut max_gen = 0;
+        let mut log_counter = 0;
         for _ in analyse_rx {
             let window = window.read().unwrap();
             /* TODO here is where the analyses will be dispatched from */
@@ -39,9 +90,9 @@ pub fn spawn_logger(circbuf_size: usize, log_freq: usize) -> (SyncSender<Creatur
                     &Some (ref fvec) => {
                         count += 1;
                         let fit = fvec.mean() as f32;
-                        if fit > max_fit {
+                        if fit > max_fitness {
                             println!("[LOGGER] Fitness: {}\n{}", fit, &creature);
-                            max_fit = fit;
+                            max_fitness = fit;
                         };
                         sum_fit += fit;
                         let gen = creature.generation();
@@ -55,7 +106,15 @@ pub fn spawn_logger(circbuf_size: usize, log_freq: usize) -> (SyncSender<Creatur
             let mean_fitness = sum_fit / count as f32;
             let mean_gen = sum_gen / count as f32;
             let mean_len = sum_len as f32 / count as f32;
-            println!("[LOGGER] max gen: {}, mean gen: {:4.4}, mean fitness: {:1.5}, max fitness: {}, mean length: {}", max_gen, mean_gen, mean_fitness, max_fit, mean_len);
+            log(&vec![
+                ("MAX-GEN", max_gen as f32),
+                ("MEAN-GEN", mean_gen),
+                ("MEAN-FIT", mean_fitness),
+                ("MAX-FIT", max_fitness),
+                ("MEAN-LEN", mean_len),
+            ], log_counter);
+            log_counter += 1;
+      //      println!("[LOGGER] max gen: {}, mean gen: {:4.4}, mean fitness: {:1.5}, max fitness: {}, mean length: {}", max_gen, mean_gen, mean_fitness, max_fit, mean_len);
             //sleep(Duration::from_millis(1000));
         }
     });

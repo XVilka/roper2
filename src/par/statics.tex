@@ -1,4 +1,4 @@
-% Created 2019-03-17 Sun 20:51
+% Created 2019-03-18 Mon 13:54
 % Intended LaTeX compiler: pdflatex
 \documentclass[11pt]{article}
 \usepackage[utf8]{inputenc}
@@ -32,7 +32,7 @@
 
 
 \section{Reading the INI file}
-\label{sec:org2bd9f34}
+\label{sec:org38f7e90}
 
 First, we need to tell \gls{roper2} where to find the config file. This is
 set through the environment variable, \texttt{ROPER\_INI\_PATH}.
@@ -62,10 +62,10 @@ valid configuration file (using the current defaults) is as follows:
 encoding=utf-8
 
 [Binary]
-path=/home/oblivia/src/roper2/elfs/x86/systemd
+path=/home/oblivia/src/roper2/elfs/x86/git
 
 [Random]
-seed=de ad f0 0d ba 34 56 78 ba ad ba be c0 de fa ce
+seed=de ad f0 0d ba be 56 78 ba ad ba be c0 de fa ce
 
 [Selection]
 tournament_size=4
@@ -73,6 +73,8 @@ selection_window_size=65
 
 [Population]
 population_size=100000
+max_creature_length=32
+min_creature_length=2
 
 [Mutation]
 pointwise_mutation_rate=0.20
@@ -86,7 +88,7 @@ Now, we want to load the entire configuration in as a static variable.
 To do this, we use the \texttt{lazy\_static!} macro, which we'll be leaning on
 pretty heavily in this module. 
 
-\lstset{language=rust,label=org029777f,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orgf1369ee,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 lazy_static! {
     pub static ref INI: Ini = Ini::load_from_file(&*ROPER_INI_PATH)
@@ -103,7 +105,7 @@ okay if fewer than 32 bytes are specified in the \texttt{ini} file -- the remain
 bytes will just be padded with zeroes. Any excess bytes will be ignored,
 so if you can't count, no sweat.
 
-\lstset{language=rust,label=orgd0ebb7b,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orgcf605dc,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 pub type RngSeed = [u8; 32];
 
@@ -129,13 +131,13 @@ lazy_static! {
 \end{lstlisting}
 
 \subsection{Loading the CODE\_BUFFER}
-\label{sec:org86f9fa8}
+\label{sec:orgcb7c98d}
 
 There's no reason to read the machine code we're targetting into memory
 more than once, and no reason to tangle up the code with passed pointers
 to this shared and immutable resource, so we might as well load that as
 a global as well.
-\lstset{language=rust,label=orgab0bde3,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org1d26fab,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 lazy_static! {
     pub static ref CODE_BUFFER: Vec<u8>
@@ -166,10 +168,10 @@ A more structured view on this same data is supplied by the static global,
 
 
 \subsection{Other Static Variables}
-\label{sec:org2386bf7}
+\label{sec:orgba7d9b3}
 
 A bit too lazy to document these right now. 
-\lstset{language=rust,label=orge6e030e,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org16a0390,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 
 
@@ -225,13 +227,16 @@ lazy_static! {
 }
 
 fn lookup_usize_setting (section: &str, item: &str, default: usize) -> usize {
+    let default = format!("{}", default); /* KLUDGE */ 
+    let str_setting = lookup_string_setting(section, item, default);
+    (&str_setting).parse::<usize>().unwrap()
+}
+
+fn lookup_string_setting (section: &str, item: &str, default: String) -> String {
     let sec = INI.section(Some(section.to_owned()));
-    let dstr = &format!("{}",default); /* KLUDGE */
     match sec {
         None => default,
-        Some(s) => s.get(item).unwrap_or(&dstr)
-            .parse::<usize>()
-            .unwrap(),
+        Some(s) => s.get(item).unwrap_or(&default).to_string()
     }
 }
 
@@ -281,7 +286,11 @@ pub enum MaskOp {
 
 lazy_static! {
     /* TODO read from config file */
-    pub static ref CROSSOVER_MASK_COMBINER: MaskOp = MaskOp::And;
+    pub static ref CROSSOVER_MASK_COMBINER: MaskOp = MaskOp::Xor;
+    /* I may have stumbled upon something interesting here. using Xor masks
+    on the xbits appears to forestall premature convergence! Which makes sense, 
+    if you think about it -- it forces crossover to at most periodically cycle
+    around a fixed genotype, giving the gene pool a bit more room to breathe. */
 }
 
 lazy_static! {
@@ -331,12 +340,17 @@ lazy_static! {
         lookup_usize_setting("Concurrency", "num_engines", 16);
 }
 
+
+lazy_static! {
+    pub static ref LOG_DIRECTORY: String =
+        lookup_string_setting("Logging", "log_directory", "./logs".to_string());
+}
 \end{lstlisting}
 
 \section{Dependencies}
-\label{sec:orgf631a9b}
+\label{sec:orgb82a587}
 
-\lstset{language=rust,label=org4a95dec,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orgd8371ab,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 extern crate goblin;
 extern crate num;

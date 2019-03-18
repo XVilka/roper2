@@ -45,7 +45,10 @@ pub fn pipeline(rx: Receiver<Creature>, tx_refs: Vec<&SyncSender<Creature>>,
                     }
                 };
                 match txs[0].send(x) {
-                    Err(e) => println!("[tx:0] {}: {:?}", note, e),
+                    Err(e) => {
+                        println!("[tx:0] {}: {:?}", note, e);
+                        std::process::exit(99);
+                    },
                     Ok(k) =>  (), //println!("[tx:0] {} ok {:?}", note, k),
                 }
             } else {
@@ -103,6 +106,7 @@ pub fn evolution_pond() -> () {
         //println!("count {}",count);
         if pond.len() > *SELECTION_WINDOW_SIZE {
             rng.shuffle(&mut pond);
+            /* TODO: get random indices, then use remove_swap instead */
             for i in 0..(*SELECTION_WINDOW_SIZE) {
                 match pond.pop() {
                     Some (critter) => {
