@@ -270,7 +270,7 @@ impl Pareto for Fitness {
     fn dominated_by(&self, other: &Fitness) -> bool {
         let mut dom = true;
         for (x,y) in self.iter().zip(other.iter()) {
-            if (x > y) {
+            if x > y {
                 dom = false;
                 break
             }

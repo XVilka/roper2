@@ -2,15 +2,13 @@ extern crate rand;
 
 use std::fmt::Display;
 use std::fmt;
-use std::ops::*;
 use std::collections::HashMap;
 use emu::loader::{find_static_seg, align_inst_addr, Mode, Seg, MEM_IMAGE};
 use par::statics::*;
 
 use self::rand::Rng;
 
-#[derive(     Clone, Copy, Debug,
-         PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Gadget {
     pub ret_addr: u64,
     pub entry: u64,
@@ -116,30 +114,15 @@ pub struct Chain {
     pub generation: usize,
 }
 
-//unsafe impl Send for Chain {}
 
 impl Display for Chain {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         //let mut s = Vec::new();
         //let mut pad_offset = 0;
         for allele in self.alleles.iter() {
-            write!(f, "\t{}\n", allele);
+            write!(f, "\t{}\n", allele)?;
         }
-        /*
-        for gad in self.gads.iter() {
-            s.push(format!("{}",gad));
-            if gad.sp_delta <= 1 { continue };
-            let padnum = self.pads.len();
-            if padnum == 0 { continue };
-            for i in 0..(gad.sp_delta-1) {
-                let o = i + pad_offset;
-                let w = self.pads[o % padnum];
-                s.push(format!("{}",w));
-            }
-            pad_offset += gad.sp_delta-1;
-        }
-        */
-        write!(f, "\tXBITS: {:064b}\n", self.xbits);
+        write!(f, "\tXBITS: {:064b}\n", self.xbits)?;
         write!(f, "\tGEN: {}\n", self.generation)
     }
 }

@@ -39,7 +39,7 @@ use par::statics::*;
               saved_context: unicorn::Context::new(),
               writeable_bak: None,
           };
-          emu.save_state();
+          emu.save_state().unwrap();
           emu
       }
 
@@ -64,7 +64,7 @@ use par::statics::*;
       /// their state at the last save_state() event.
       pub fn restore_state(&mut self) -> Result<(), unicorn::Error> {
           for seg in self.writeable_bak.as_ref().unwrap() {
-              self.uc.mem_write(seg.aligned_start(), &seg.data);
+              self.uc.mem_write(seg.aligned_start(), &seg.data)?;
           }
           self.restore_context()
       }
@@ -76,7 +76,7 @@ use par::statics::*;
 
       /* method for the Engine trait */
         pub fn hard_reset(&mut self) -> () {
-            self.save_state();
+            self.save_state().unwrap();
             let (uc_arch, uc_mode) = self.arch.as_uc();
             let uc = unicorn::Unicorn::new(uc_arch, uc_mode).unwrap();
             for seg in &self.mem {
@@ -85,7 +85,7 @@ use par::statics::*;
                 uc.mem_write(seg.aligned_start(), &seg.data).unwrap();
             }
             self.uc = uc;
-            self.restore_state();
+            self.restore_state().unwrap(); /* i want to see these crashes */
         }
 
       pub fn mem_write(&mut self, addr: u64, data: &Vec<u8>) -> Result<(), unicorn::Error> {
@@ -490,7 +490,7 @@ pub fn init_emulator(
             }?;
         } else {
             uc.mem_map(seg.aligned_start(), seg.aligned_size(), seg.perm)?;
-            uc.mem_write(seg.aligned_start(), &seg.data); 
+            uc.mem_write(seg.aligned_start(), &seg.data)?; 
         }
     }
     Ok(uc)

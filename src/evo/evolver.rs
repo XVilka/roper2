@@ -1,7 +1,7 @@
 extern crate rand;
 
 use std::thread::{spawn, JoinHandle};
-use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
+use std::sync::mpsc::{Receiver, SyncSender};
 use self::rand::{SeedableRng,Rng};
 use self::rand::isaac::Isaac64Rng;
 
@@ -39,7 +39,7 @@ pub fn pipeline(rx: Receiver<Creature>, tx_refs: Vec<&SyncSender<Creature>>,
                     for tx in txs[1..].iter() {
                         match tx.send(x.clone()) {
                             Err(e) => println!("[tx:{}] {}: {:?}", tx_num, note, e),
-                            Ok(k) =>  (), //println!("[tx:{}] {} ok {:?}", tx_num, note, k),
+                            Ok(_k) =>  (), //println!("[tx:{}] {} ok {:?}", tx_num, note, _k),
                         }
                         tx_num += 1;
                     }
@@ -49,7 +49,7 @@ pub fn pipeline(rx: Receiver<Creature>, tx_refs: Vec<&SyncSender<Creature>>,
                         println!("[tx:0] {}: {:?}", note, e);
                         std::process::exit(99);
                     },
-                    Ok(k) =>  (), //println!("[tx:0] {} ok {:?}", note, k),
+                    Ok(_k) =>  (), //println!("[tx:0] {} ok {:?}", note, _k),
                 }
             } else {
                 println!("[!] Limit of {} on {} pipeline reached. Concluding.", limit, note);
@@ -65,6 +65,7 @@ pub fn pipeline(rx: Receiver<Creature>, tx_refs: Vec<&SyncSender<Creature>>,
 }
 
 
+#[allow(unused_variables)]
 pub fn evolution_pond() -> () {
 
     let rng_seed = *RNG_SEED;
@@ -110,11 +111,13 @@ pub fn evolution_pond() -> () {
             for i in 0..(*SELECTION_WINDOW_SIZE) {
                 match pond.pop() {
                     Some (critter) => {
-                        match (if critter.has_hatched() {
-                            breed_tx.send(critter)
-                        } else {
-                            hatch_tx.send(critter)
-                        }) {
+                        let res =
+                            if critter.has_hatched() {
+                                breed_tx.send(critter)
+                            } else {
+                                hatch_tx.send(critter)
+                            };
+                        match res {
                             Ok(_) => (),
                             Err(e) => println!("error {:?}", e),
                         }

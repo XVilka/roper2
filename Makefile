@@ -1,17 +1,20 @@
 
+all: target/debug/roper
+
+
 unicorn/libunicorn.so.1:
 	cd unicorn
 	./make.sh
 
-target/debug/roper:
+target/debug/roper: unicorn/libunicorn.so.1
 	cargo build
 
-target/release/roper:
+target/release/roper: unicorn/libunicorn.so.1
 	cargo build --release
 
 run:
-	sh -c "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${PWD}/unicorn cargo run --release"
+	bash -c ". env.rc ; LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${PWD}/unicorn cargo run --release"
 
 debug:
-	sh -c "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${PWD}/unicorn cargo run"
+	bash -c ". env.rc ; LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${PWD}/unicorn cargo run"
 

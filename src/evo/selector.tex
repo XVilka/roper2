@@ -1,4 +1,4 @@
-% Created 2019-03-18 Mon 16:39
+% Created 2019-04-21 Sun 16:33
 % Intended LaTeX compiler: pdflatex
 \documentclass[11pt]{article}
 \usepackage[utf8]{inputenc}
@@ -34,29 +34,24 @@ Going back to editing the rust code, directly, until I can get
 this org mode interface a bit smoother.
 
 \section{Bring dependencies into scope}
-\label{sec:org447a129}
-\lstset{language=rust,label=org651eece,caption= ,captionpos=b,numbers=none}
+\label{sec:org6559107}
+\lstset{language=rust,label=org4af317a,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 extern crate rand; 
 
 use std::thread::{spawn, JoinHandle};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
-use std::cell::RefCell;
-use std::sync::{Arc,RwLock}; 
-use std::collections::VecDeque;
 
 use self::rand::{Rng, SeedableRng};
 use self::rand::isaac::Isaac64Rng;
 
 use par::statics::*;
-use gen::genotype::*;
-use gen::phenotype::{FitFuncs,Creature,Fitness,FitnessOps,Phenome};
+use gen::phenotype::{Creature,FitnessOps};
 use evo::crossover::{homologous_crossover};
-use fit::circbuf::{CircBuf};
 \end{lstlisting}
 
 \section{Selection on a Stream}
-\label{sec:org179e7c1}
+\label{sec:org388b66a}
 
 One of the interesting design decisions that crystallized in engineering
 this iteration of ROPER has been to treat the population as a cyclical
@@ -83,7 +78,7 @@ will be the winners of the tournament, and \texttt{tsize/2} will be newborns.
 
 
 \subsection{{\bfseries\sffamily TODO} Redesign this module}
-\label{sec:org424df2c}
+\label{sec:org8201ab9}
 
 Basically, we have two paths we can take, here: either commit to the stateful approach, and
 encase the creatures in RefCells \emph{from the beginning}, so that we can mutate them in-place
@@ -95,7 +90,7 @@ them on doing so, and then inject them back into the stream.
 
 
 \subsection{Spawning the selector/breeder}
-\label{sec:org60e5afe}
+\label{sec:orgc6cd854}
 
 As creatures enter the breeding thread, through the \texttt{into\_breeder\_tx}
 channel, they are assigned to a randomly chosen slot in the \texttt{arena}. 
@@ -124,7 +119,7 @@ We can probably reuse the pattern that we've already used in
 the hatchery and elsewhere. 
 
 
-\lstset{language=rust,label=org994fc65,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org102a9c7,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 pub fn spawn_breeder(
     window_size: usize,
@@ -133,7 +128,7 @@ pub fn spawn_breeder(
     let hatch_tx = hatch_tx.clone();
     let (from_breeder_tx, from_breeder_rx) = sync_channel(*CHANNEL_SIZE);
     let (into_breeder_tx, into_breeder_rx) = sync_channel(*CHANNEL_SIZE);
-    let mut rng_seed = RNG_SEED.clone();
+    let rng_seed = RNG_SEED.clone();
     let sel_handle = spawn(move || {
         /* TODO */
         let mut sel_window: Vec<Creature> = Vec::with_capacity(window_size);
@@ -178,7 +173,7 @@ pub fn spawn_breeder(
 \end{lstlisting}
 
 \subsection{Selection functions}
-\label{sec:orge3ba170}
+\label{sec:org2e13b17}
 
 To work with the form of homologous crossover implemented in the
 \texttt{emu::crossover} module, we may wish to use simple mate selection
@@ -198,7 +193,7 @@ to be as dense as possible, without losing the benefits of sparseness.
 (The benefit of a sparse crossover mask, of course, is that it reduces
 the probability of destructive crossover.)
 
-\lstset{language=rust,label=org3c691b0,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org0aeb493,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 
   fn xover_compat(c1: u64, c2: u64) -> usize {
@@ -209,7 +204,7 @@ the probability of destructive crossover.)
 
 The static variable \texttt{MATE\_SELECTION\_FACTOR} will be used\ldots{}
 
-\lstset{language=rust,label=org001a598,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orgcc32756,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 
 fn tournament(selection_window: &mut Vec<Creature>,
@@ -220,7 +215,7 @@ fn tournament(selection_window: &mut Vec<Creature>,
     for i in 0..32 { new_seed[i] = rng.gen::<u8>() }
 
 
-    if (*TSIZE as f32 * *MATE_SELECTION_FACTOR > selection_window.len() as f32) {
+    if *TSIZE as f32 * *MATE_SELECTION_FACTOR > selection_window.len() as f32 {
         println!("TSIZE = {}; MATE_SELECTION_FACTOR = {}; selection_window.len() = {}",
                  *TSIZE, *MATE_SELECTION_FACTOR, selection_window.len());
         panic!("aarggh");
@@ -335,15 +330,15 @@ fn tournament(selection_window: &mut Vec<Creature>,
     /* Consider filtering against the pareto front instead of the parent pair */
     let mut dead_meta_idx = *TSIZE-1;
     assert!(*TSIZE > 2);
-    while indices[dead_meta_idx] == p0 || indices[dead_meta_idx] == p1 {
+    while dead_meta_idx > 0 
+        && (indices[dead_meta_idx] == p0 || indices[dead_meta_idx] == p1) {
         dead_meta_idx -= 1;
-        assert!(dead_meta_idx >= 0);
     }
     let d0 = indices[dead_meta_idx];
     dead_meta_idx -= 1;
-    while indices[dead_meta_idx] == p0 || indices[dead_meta_idx] == p1 {
+    while dead_meta_idx > 0 
+        && (indices[dead_meta_idx] == p0 || indices[dead_meta_idx] == p1) {
         dead_meta_idx -= 1;
-        assert!(dead_meta_idx >= 0);
     }
     let d1 = indices[dead_meta_idx];
 
@@ -386,7 +381,7 @@ fn tournament(selection_window: &mut Vec<Creature>,
 \end{lstlisting}
 
 \section{{\bfseries\sffamily TODO} implement a carousel mechanism in the selector}
-\label{sec:org719baf6}
+\label{sec:org908ef72}
 
 I think the selector component might be a bit of a bottleneck right now. 
 Implement a carousel, like you did for the evaluator and the hatchery. 

@@ -52,9 +52,9 @@ pub fn spawn_hatchery(
              */
             if incoming.has_hatched() {
                 num_already_hatched += 1;
-                already_hatched_tx.send(incoming);
+                already_hatched_tx.send(incoming).unwrap();
             } else {
-                carousel_tx.send(incoming);
+                carousel_tx.send(incoming).unwrap();
                 counter += 1;
             }
             coop = (coop + 1) % carousel.len();
@@ -69,7 +69,7 @@ pub fn spawn_hatchery(
             if let Some((tx, h)) = carousel.pop() {
               println!(")-- cleaning up {:?} --(", tx);
                 drop(tx); 
-                h.join();
+                h.join().unwrap();
             };
         }
     });
@@ -91,7 +91,7 @@ fn spawn_coop(rx: Receiver<gen::Creature>,
             println!("[in spawn_coop] This bastard hasn't hatched!\n{}", creature);
             std::process::exit(1);
         }
-        tx.send(creature); /* goes back to the thread that called spawn_hatchery */
+        tx.send(creature).unwrap(); /* goes back to the thread that called spawn_hatchery */
     }
 }
 #[inline]
@@ -125,12 +125,12 @@ pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine)
       payload.truncate(stack_size / 2);
       let _payload_len = payload.len();
       let stack_entry = stack_addr + (stack_size / 2) as u64;
-      emu.restore_state();
+      emu.restore_state().unwrap();
 
       /* load payload **/
       emu.mem_write(stack_entry, &payload)
           .expect("mem_write fail in hatch");
-      emu.set_sp(stack_entry + *ADDR_WIDTH as u64);
+      emu.set_sp(stack_entry + *ADDR_WIDTH as u64).unwrap();
 
     let visitor: Rc<RefCell<Vec<VisitRecord>>> = Rc::new(RefCell::new(Vec::new()));
     let writelog = Rc::new(RefCell::new(Vec::new()));

@@ -2,7 +2,7 @@ use std::thread::{spawn, JoinHandle};
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::{Arc, RwLock};
 
-use gen::{Creature,FitFuncs,FitnessOps,Fitness};
+use gen::{Creature,FitnessOps};
 use fit::CircBuf;
 use par::statics::*;
 
@@ -127,7 +127,7 @@ pub fn spawn_logger(circbuf_size: usize, log_freq: usize) -> (SyncSender<Creatur
             let mut received = received.write().unwrap();
             received.push(incoming);
             if count % analysis_period == 0 {
-                analyse_tx.send(true);
+                analyse_tx.send(true).unwrap();
             };
             count += 1;
         }

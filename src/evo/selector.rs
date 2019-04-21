@@ -2,18 +2,13 @@ extern crate rand;
 
 use std::thread::{spawn, JoinHandle};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
-use std::cell::RefCell;
-use std::sync::{Arc,RwLock}; 
-use std::collections::VecDeque;
 
 use self::rand::{Rng, SeedableRng};
 use self::rand::isaac::Isaac64Rng;
 
 use par::statics::*;
-use gen::genotype::*;
-use gen::phenotype::{FitFuncs,Creature,Fitness,FitnessOps,Phenome};
+use gen::phenotype::{Creature,FitnessOps};
 use evo::crossover::{homologous_crossover};
-use fit::circbuf::{CircBuf};
 
 
 
@@ -24,7 +19,7 @@ pub fn spawn_breeder(
     let hatch_tx = hatch_tx.clone();
     let (from_breeder_tx, from_breeder_rx) = sync_channel(*CHANNEL_SIZE);
     let (into_breeder_tx, into_breeder_rx) = sync_channel(*CHANNEL_SIZE);
-    let mut rng_seed = RNG_SEED.clone();
+    let rng_seed = RNG_SEED.clone();
     let sel_handle = spawn(move || {
         /* TODO */
         let mut sel_window: Vec<Creature> = Vec::with_capacity(window_size);
@@ -80,7 +75,7 @@ fn tournament(selection_window: &mut Vec<Creature>,
     for i in 0..32 { new_seed[i] = rng.gen::<u8>() }
 
 
-    if (*TSIZE as f32 * *MATE_SELECTION_FACTOR > selection_window.len() as f32) {
+    if *TSIZE as f32 * *MATE_SELECTION_FACTOR > selection_window.len() as f32 {
         println!("TSIZE = {}; MATE_SELECTION_FACTOR = {}; selection_window.len() = {}",
                  *TSIZE, *MATE_SELECTION_FACTOR, selection_window.len());
         panic!("aarggh");
@@ -195,15 +190,15 @@ fn tournament(selection_window: &mut Vec<Creature>,
     /* Consider filtering against the pareto front instead of the parent pair */
     let mut dead_meta_idx = *TSIZE-1;
     assert!(*TSIZE > 2);
-    while indices[dead_meta_idx] == p0 || indices[dead_meta_idx] == p1 {
+    while dead_meta_idx > 0 
+        && (indices[dead_meta_idx] == p0 || indices[dead_meta_idx] == p1) {
         dead_meta_idx -= 1;
-        assert!(dead_meta_idx >= 0);
     }
     let d0 = indices[dead_meta_idx];
     dead_meta_idx -= 1;
-    while indices[dead_meta_idx] == p0 || indices[dead_meta_idx] == p1 {
+    while dead_meta_idx > 0 
+        && (indices[dead_meta_idx] == p0 || indices[dead_meta_idx] == p1) {
         dead_meta_idx -= 1;
-        assert!(dead_meta_idx >= 0);
     }
     let d1 = indices[dead_meta_idx];
 

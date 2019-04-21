@@ -1,4 +1,4 @@
-% Created 2019-03-17 Sun 18:05
+% Created 2019-04-21 Sun 16:28
 % Intended LaTeX compiler: pdflatex
 \documentclass[11pt]{article}
 \usepackage[utf8]{inputenc}
@@ -33,9 +33,9 @@
 
 
 \section{The Engine Structure}
-\label{sec:org7f60671}
+\label{sec:orgd03f381}
 
-\lstset{language=rust,label=org6e9e16b,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org64a5317,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 <<bring the engine loader's dependencies into scope>>
 
@@ -69,7 +69,7 @@
               saved_context: unicorn::Context::new(),
               writeable_bak: None,
           };
-          emu.save_state();
+          emu.save_state().unwrap();
           emu
       }
 
@@ -94,7 +94,7 @@
       /// their state at the last save_state() event.
       pub fn restore_state(&mut self) -> Result<(), unicorn::Error> {
           for seg in self.writeable_bak.as_ref().unwrap() {
-              self.uc.mem_write(seg.aligned_start(), &seg.data);
+              self.uc.mem_write(seg.aligned_start(), &seg.data)?;
           }
           self.restore_context()
       }
@@ -387,7 +387,7 @@
 \end{lstlisting}
 
 \section{A Few Unicorn Utilities}
-\label{sec:orge0c2734}
+\label{sec:org85669b1}
 
 What follows are a handful of convenience functions for interacting
 with the Unicorn emulator. They are not defined, here, as methods on
@@ -395,7 +395,7 @@ the \texttt{Engine} trait, because we will often have reason to use them in
 the callbacks we hook into the engine, and those callbacks only have
 access to the naked \texttt{Unicorn} structure, and not to our \texttt{Engine} wrapper.
 
-\lstset{language=rust,label=orgea882de,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org9417e01,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 /// Returns the regid for the program counter, on the
 /// current ARCHITECTURE (wrt static variable)
@@ -520,7 +520,7 @@ pub fn init_emulator(
             }?;
         } else {
             uc.mem_map(seg.aligned_start(), seg.aligned_size(), seg.perm)?;
-            uc.mem_write(seg.aligned_start(), &seg.data); 
+            uc.mem_write(seg.aligned_start(), &seg.data)?; 
         }
     }
     Ok(uc)
@@ -566,9 +566,9 @@ fn thumb_calc_sp_delta(_addr: u64) -> usize {
 
 
 \section{Architectures and Hardware Modes}
-\label{sec:org76c3cb0}
+\label{sec:orgc1db474}
 
-\lstset{language=rust,label=org4e6a878,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org7d3b59e,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 #[derive(   Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
@@ -635,7 +635,7 @@ the peculiarity that, while it defines a \texttt{Mode} enum, just as we do
 here, its mode query method returns an integer (\texttt{usize}) value, which
 the library declines to decode for us. This little function handles
 that end of things.
-\lstset{language=rust,label=orgf7f9902,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orge84fac4,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 pub fn umode_from_usize(x: usize) -> unicorn::Mode {
     match x {
@@ -655,12 +655,12 @@ Note that \texttt{unicorn-rs} uses \texttt{Mode::LITTLE\_ENDIAN} to signify ARM 
 which can sometimes be a bit confusing.
 
 \section{Segments and Memory Images}
-\label{sec:orge7fb301}
+\label{sec:orge6975e9}
 
 \subsection{The Segment Type}
-\label{sec:org729c3d2}
+\label{sec:org0afc910}
 
-\lstset{language=rust,label=org0e39133,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org218ec3d,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 #[derive(   Copy, Clone, PartialEq, Eq, Debug)]
 pub enum SegType {
@@ -704,7 +704,7 @@ impl SegType {
 }
 \end{lstlisting}
 
-\lstset{language=rust,label=org5a6fe9d,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orga19db0a,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 pub type Perm = unicorn::Protection;
 
@@ -779,7 +779,7 @@ impl Seg {
 }
 \end{lstlisting}
 
-\lstset{language=rust,label=org9252707,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orgcb1b6c6,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 impl Display for Seg {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
@@ -795,7 +795,7 @@ impl Display for Seg {
 \end{lstlisting}
 
 \subsection{The Static Memory Map}
-\label{sec:org528b977}
+\label{sec:org04eba18}
 
 One of the design decisions that separates \gls{roper2} from \gls{roper} is
 to make generous use of \emph{immutable} global variables, rather than clumsily
@@ -818,7 +818,7 @@ variable means that we only need to parse it once, and that we can refer
 back to it whenever we like, when we need to dereference a pointer, search
 for a value, or generate a new individual genotype.
 
-\lstset{language=rust,label=orgdf1cb10,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org3f6ebb0,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 pub type MemImage = Vec<Seg>;
 
@@ -899,9 +899,9 @@ lazy_static! {
 \end{lstlisting}
 
 \subsection{Some utilities for working with the MEM\_IMAGE}
-\label{sec:org49fc065}
+\label{sec:org6a36211}
 
-\lstset{language=rust,label=orgb6de8b9,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orgfd2f05d,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 pub fn find_static_seg(addr: u64) -> Option<&'static Seg> {
     let mut this_seg = None;
@@ -938,8 +938,8 @@ pub fn read_static_mem(addr: u64, size: usize) -> Option<Vec<u8>> {
 \end{lstlisting}
 
 \section{Some tests}
-\label{sec:org16f968b}
-\lstset{language=rust,label=org640123e,caption= ,captionpos=b,numbers=none}
+\label{sec:org5b9c8f5}
+\lstset{language=rust,label=orgae880f1,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 #[test]
 fn test_engine_new() {
@@ -948,7 +948,7 @@ fn test_engine_new() {
 \end{lstlisting}
 
 
-\lstset{language=rust,label=org03a92f3,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org0f2de97,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 #[test]
 fn test_engine_reset() {
@@ -982,7 +982,7 @@ Unicorn is Version 1.0.1), Unicorn still suffers from this bug, though
 an issue has been raised with the developer. The following test is
 enough to trigger the bug:  
 
-\lstset{language=rust,label=org82c2abd,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org3580dee,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 #[test]
 fn stress_test_unicorn_cpu_arm() {
@@ -1012,11 +1012,11 @@ context -- every execution or two. This lets us do all the things we want to
 with the \gls{arm} emulator, bug notwithstanding, albeit at the cost of an
 order of magnitude in runtime. 
 
-\lstset{language=rust,label=org990390e,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org0575b77,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 /* method for the Engine trait */
   pub fn hard_reset(&mut self) -> () {
-      self.save_state();
+      self.save_state().unwrap();
       let (uc_arch, uc_mode) = self.arch.as_uc();
       let uc = unicorn::Unicorn::new(uc_arch, uc_mode).unwrap();
       for seg in &self.mem {
@@ -1025,12 +1025,12 @@ order of magnitude in runtime.
           uc.mem_write(seg.aligned_start(), &seg.data).unwrap();
       }
       self.uc = uc;
-      self.restore_state();
+      self.restore_state().unwrap(); /* i want to see these crashes */
   }
 \end{lstlisting}
 
 
-\lstset{language=rust,label=orgc8401e6,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org2cdee86,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 #[test]
 fn stress_test_unicorn_cpu_x86_64() {
@@ -1053,11 +1053,11 @@ fn stress_test_unicorn_cpu_x86_64() {
 \end{lstlisting}
 
 \section{Some Useful Constants and Predicates}
-\label{sec:org4a428a0}
+\label{sec:org7b911c8}
 \subsection{General Registers for the Architectures Supported}
-\label{sec:orgf62d70c}
+\label{sec:orgee7b21e}
 
-\lstset{language=rust,label=org71b0a8f,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org2560c5c,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 pub static MIPS_REGISTERS: [RegisterMIPS; 33] = [
     RegisterMIPS::PC,
@@ -1136,7 +1136,7 @@ pub static X86_64_REGISTERS: [RegisterX86; 17] = [
 
 \end{lstlisting}
 
-\lstset{language=rust,label=org9feda88,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org80caae4,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 pub const ARM_ARM: Arch = Arch::Arm(Mode::Arm);
 pub const ARM_THUMB: Arch = Arch::Arm(Mode::Thumb);
@@ -1149,7 +1149,7 @@ pub const PROT_WRITE: Perm = unicorn::PROT_WRITE;
 pub const X86_RET: u8 = 0xC3;
 \end{lstlisting}
 
-\lstset{language=rust,label=orgec43b43,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orge3e6c27,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 fn x86_ret(b: &Vec<u8>) -> bool {
     b[0] == X86_RET
@@ -1168,7 +1168,7 @@ fn thumb_ret(w: &Vec<u8>) -> bool {
 
 
 \section{Dependencies}
-\label{sec:org08708bd}
+\label{sec:org55bbe64}
 The two most important external crates used in this module are the
 \textbf{goblin} crate, which handles the executable file parsing (in various formats,
 though we restrict ourselves to \gls{elf} binaries for now), and the
@@ -1177,7 +1177,7 @@ engine. \textbf{Capstone} is brought into scope to facilitate instruction analys
 where this can't easily be done with a trivial and efficient bitmask operation.
 
 
-\lstset{language=rust,label=org45bab7f,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org75c10c6,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 extern crate capstone;
 extern crate goblin;

@@ -49,12 +49,12 @@ and everything proceeds just as it would in a "wild" gls:rop attack.
         payload.truncate(stack_size / 2);
         let _payload_len = payload.len();
         let stack_entry = stack_addr + (stack_size / 2) as u64;
-        emu.restore_state();
+        emu.restore_state().unwrap();
 
         /* load payload **/
         emu.mem_write(stack_entry, &payload)
             .expect("mem_write fail in hatch");
-        emu.set_sp(stack_entry + *ADDR_WIDTH as u64);
+        emu.set_sp(stack_entry + *ADDR_WIDTH as u64).unwrap();
 
       <<attach hooks for tracking performance>>
 
@@ -307,7 +307,7 @@ machine words. No copying or cloning is needed.[fn::
               println!("[in spawn_coop] This bastard hasn't hatched!\n{}", creature);
               std::process::exit(1);
           }
-          tx.send(creature); /* goes back to the thread that called spawn_hatchery */
+          tx.send(creature).unwrap(); /* goes back to the thread that called spawn_hatchery */
       }
   }
 #+END_SRC
@@ -361,9 +361,9 @@ thread, which is spawned, in turn, by the ~spawn_hatchery~ function.
                ,*/
               if incoming.has_hatched() {
                   num_already_hatched += 1;
-                  already_hatched_tx.send(incoming);
+                  already_hatched_tx.send(incoming).unwrap();
               } else {
-                  carousel_tx.send(incoming);
+                  carousel_tx.send(incoming).unwrap();
                   counter += 1;
               }
               coop = (coop + 1) % carousel.len();
@@ -378,7 +378,7 @@ thread, which is spawned, in turn, by the ~spawn_hatchery~ function.
               if let Some((tx, h)) = carousel.pop() {
                 println!(")-- cleaning up {:?} --(", tx);
                   drop(tx); 
-                  h.join();
+                  h.join().unwrap();
               };
           }
       });

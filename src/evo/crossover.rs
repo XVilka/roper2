@@ -4,7 +4,7 @@ use gen::*;
 use par::statics::*;
 fn mutate_arithmetic <R: Rng> (allele: &Allele, rng: &mut R) -> Allele {
   /* start basic, add more options later */
-  let delta = (rng.gen::<isize>() % 16);
+  let delta = rng.gen::<isize>() % 16;
   //println!("[+] mutate_arithmetic: delta = {}", delta);
   allele.add(delta)
 }
@@ -60,7 +60,7 @@ fn xbits_sites<R: Rng>(
     potential_sites.dedup();
     let num = (potential_sites.len() as f32 * crossover_degree).ceil() as usize;
 
-    let mut actual_sites = rand::seq::sample_iter(&mut rng,
+    let actual_sites = rand::seq::sample_iter(&mut rng,
                                                   potential_sites.into_iter(), 
                                                   num).unwrap();
   /*

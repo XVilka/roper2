@@ -53,13 +53,13 @@ pub fn spawn_evaluator(
             slave_idx = (slave_idx + 1) % carousel.len();
             let mut sliding_window = sliding_window.write().unwrap();
             sliding_window.push(creature.clone());
-            slave_tx.send(creature);
+            slave_tx.send(creature).unwrap();
         }
 
         while carousel.len() > 0 {
             if let Some((slave_tx, h)) = carousel.pop() {
                 drop(slave_tx);
-                h.join();
+                h.join().unwrap();
             }
         }
     });
@@ -99,7 +99,7 @@ fn slave_eval(
                 creature.phenome.ff_mean_writecount(),
             ]);
         assert!(creature.has_hatched());
-        eval_tx.send(creature);
+        eval_tx.send(creature).unwrap();
     }
 }
 /***

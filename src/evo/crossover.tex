@@ -1,4 +1,4 @@
-% Created 2019-03-18 Mon 13:13
+% Created 2019-04-21 Sun 16:25
 % Intended LaTeX compiler: pdflatex
 \documentclass[11pt]{article}
 \usepackage[utf8]{inputenc}
@@ -32,14 +32,14 @@
 
 
 \section{Homologous Crossover in ROPER}
-\label{sec:org4717fa2}
+\label{sec:org5a7519b}
 The idea with the crossover mask (or, as its called in the source code, the
 "\texttt{xbits}") mechanism is this: With each genome we associate a bitmask (for now,
 this is in the form of an unsigned, 64-bit integer, but this is a bit of a
 shortcut -- we'd probably like to let it be as long as the longest possible
 genome). For the first generation, this value is initialized randomly. During
 crossover, the sites of genetic exchange are determined by \emph{combining} (\S
-\ref{org0774328}) the parents' crossover masks: crossover may occur (only) at
+\ref{org462099b}) the parents' crossover masks: crossover may occur (only) at
 those sites (mod 64) where the combined mask has a 1. Every subsequent generation
 will inherit its own crossover masks from another \emph{combination} of its parents'
 masks -- though, as we'll see, there are good reasons for selecting distinct
@@ -48,7 +48,7 @@ to generate the map of potential crossover sites should not necessarily be the
 same operation that generates the masks that the offspring will bring to their
 own future crossovers.
 
-\lstset{language=rust,label=orga1e70f9,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orgc2468a4,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 pub fn homologous_crossover<R>(mother: &Creature,
                                father: &Creature,
@@ -124,8 +124,8 @@ where R: Rng, {
 \end{lstlisting}
 
 \subsection{Combining the Crossover Masks}
-\label{sec:orgae05e80}
-\label{org0774328}
+\label{sec:org41664c2}
+\label{org462099b}
 
 The precise means of combining the \texttt{xbit} vectors is left open to
 experimentation, but a good starting point seems to be bitwise conjunction (the
@@ -157,7 +157,7 @@ incorporated as well: the crossover mask that the child will inherit,
 and share with its siblings, will be a uniform crossover of its
 parents', occasionally perturbed by a single bit-flip mutation.
 
-\lstset{language=rust,label=org20ba1f2,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org9c9d6ed,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 /// One-point crossover, between two u64s, as bitvectors.
 fn onept_bits<R: Rng>(a: u64, b: u64, rng: &mut R) -> u64 {
@@ -204,7 +204,7 @@ Once the two parents' \texttt{xbits} have been combined into a crossover mask, w
 can use it to generate a list of sites to be used in the genomic crossover
 operation. 
 
-\lstset{language=rust,label=org42d00c5,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=orgc1433ce,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 fn xbits_sites<R: Rng>(
     xbits: u64,
@@ -219,7 +219,7 @@ fn xbits_sites<R: Rng>(
     potential_sites.dedup();
     let num = (potential_sites.len() as f32 * crossover_degree).ceil() as usize;
 
-    let mut actual_sites = rand::seq::sample_iter(&mut rng,
+    let actual_sites = rand::seq::sample_iter(&mut rng,
                                                   potential_sites.into_iter(), 
                                                   num).unwrap();
   /*
@@ -236,7 +236,7 @@ fn xbits_sites<R: Rng>(
 \end{lstlisting}
 
 \section{Mutation}
-\label{sec:org5dca72c}
+\label{sec:org0262598}
 
 Without mutation, crossover-driven evolution will eventually stagnate. 
 
@@ -278,18 +278,18 @@ over the probability landscape it inhabits. In practice, even with fitness
 anulled, evolutionary systems rarely exibit such regularity, which has some very
 interesting effects on the paths that evolution pursues.
 
-\lstset{language=rust,label=orgb4967bb,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org189468c,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 fn mutate_arithmetic <R: Rng> (allele: &Allele, rng: &mut R) -> Allele {
   /* start basic, add more options later */
-  let delta = (rng.gen::<isize>() % 16);
+  let delta = rng.gen::<isize>() % 16;
   //println!("[+] mutate_arithmetic: delta = {}", delta);
   allele.add(delta)
 }
 \end{lstlisting}
 
 \section{Dependencies}
-\label{sec:orgb43e281}
+\label{sec:org1f9ef41}
 
 For this to work, we'll need just a handful of dependencies: the pseudo-random
 number generator library in the \texttt{rand} crate, ROPER's own genotype structs in
@@ -299,7 +299,7 @@ a trivial implementation decision, and may change), and a few static parameter
 values that we essentially treat as immutable globals in this project, for
 the sake of convenience, sparing ourselves quite a bit of parameter clutter.
 
-\lstset{language=rust,label=orgc601405,caption= ,captionpos=b,numbers=none}
+\lstset{language=rust,label=org5a7a31d,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 extern crate rand;
 use self::rand::{Rng};
@@ -309,8 +309,8 @@ use par::statics::*;
 
 
 \section{Putting it Together}
-\label{sec:orgd703bec}
-\lstset{language=rust,label=orgf29d463,caption= ,captionpos=b,numbers=none}
+\label{sec:org1d62233}
+\lstset{language=rust,label=orgb805b9d,caption= ,captionpos=b,numbers=none}
 \begin{lstlisting}
 <<crossover-module-dependencies>>
 <<mutation>>
