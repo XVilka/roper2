@@ -29,6 +29,11 @@ the CPU's stack memory, and the first address is popped into the gls:pc,
 just as it would be in a "stack smashing" attack. The emulator is fired up,
 and everything proceeds just as it would in a "wild" gls:rop attack.  
 
+NB: This might be a place where Futures can be usefully put to work. 
+The phenotype struct (Pod) could be reworked into a future. This might
+help with some of the memory overloading that we're seeing when our
+synchronous channels fill up. 
+
 #+NAME: hatch
 #+BEGIN_SRC rust :comments link :tangle hatchery.rs :noweb tangle
   <<bring the hatchery's dependencies into scope>>
