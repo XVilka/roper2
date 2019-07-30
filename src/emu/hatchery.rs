@@ -1,5 +1,5 @@
 // [[file:~/src/roper2/src/emu/hatchery.org::hatch][hatch]]
-extern crate unicorn; 
+use unicorn; 
 use std::thread::{spawn, JoinHandle}; 
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::rc::Rc;

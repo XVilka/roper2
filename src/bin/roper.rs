@@ -1,6 +1,6 @@
-extern crate libroper;
-extern crate rand;
-extern crate unicorn;
+
+
+
 use libroper::evo::evolver::evolution_pond;
 
 fn main() {

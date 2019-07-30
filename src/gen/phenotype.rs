@@ -1,4 +1,4 @@
-extern crate evmap;
+
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -55,7 +55,7 @@ pub struct VisitRecord {
 }
 
 impl Display for VisitRecord {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}    [REGS: {}]",
@@ -297,7 +297,7 @@ impl PartialEq for Creature {
 impl Eq for Creature {}
 
 impl Display for Creature {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "BIOGRAPHY OF {}\nGENOME:\n{}\nPHENOME:\n{}\n{}\n{:?}",

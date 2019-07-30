@@ -1,5 +1,5 @@
-extern crate capstone;
-extern crate goblin;
+
+use goblin;
 
 use std::fmt::{Display, Formatter};
 use std::fmt;
@@ -715,7 +715,7 @@ impl Seg {
 }
 
 impl Display for Seg {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "[aligned {:08x} -- {:08x}: {:?}]",

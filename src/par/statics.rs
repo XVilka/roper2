@@ -1,7 +1,7 @@
-extern crate goblin;
-extern crate num;
-extern crate rand;
-extern crate ini;
+use goblin;
+use num;
+
+use ini;
 
 use std::fs::File;
 use std::sync::{Arc, RwLock};

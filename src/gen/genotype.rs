@@ -1,4 +1,4 @@
-extern crate rand;
+use rand;
 
 use std::fmt::Display;
 use std::fmt;
@@ -49,7 +49,7 @@ impl Gadget {
 pub const ENDIAN: Endian = Endian::Little;
 
 impl Display for Gadget {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "[Entry: {}, Ret: {}, SpD: {:x}, Mode: {:?}]",
@@ -97,7 +97,7 @@ impl Allele {
 //unsafe impl Send for Allele {}
 
 impl Display for Allele {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             //&Allele::Const(x) => write!(f, "[Const {}]", wf(x)),
             &Allele::Input(i) => write!(f, "[Input Slot #{}]", i),
@@ -116,7 +116,7 @@ pub struct Chain {
 
 
 impl Display for Chain {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         //let mut s = Vec::new();
         //let mut pad_offset = 0;
         for allele in self.alleles.iter() {
