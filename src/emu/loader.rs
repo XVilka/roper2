@@ -6,8 +6,8 @@ use self::goblin::{elf, Object};
 use crate::unicorn::*;
 use crate::par::statics::*;
 
-  pub struct Engine {
-      pub uc: Box<unicorn::Unicorn>,
+  pub struct Engine<'a> {
+      pub uc: Box<unicorn::Unicorn<'a>>,
       pub arch: Arch,
       pub regids: Vec<i32>,
       mem: MemImage,
@@ -16,7 +16,7 @@ use crate::par::statics::*;
       saved_context: unicorn::Context,
   }
 
-  impl Engine {
+  impl <'a> Engine<'a> {
       pub fn new(arch: Arch) -> Self {
           let (_uc_arch, uc_mode) = arch.as_uc();
           let mut mem: MemImage = mem_image_deep_copy();
@@ -664,7 +664,7 @@ impl Seg {
     }
 
     pub fn from_phdr(phdr: &elf::ProgramHeader) -> Self {
-        let mut uc_perm = PROT_NONE;
+        let mut uc_perm = unicorn::Protection::NONE;
         if phdr.is_executable() {
             uc_perm |= PROT_EXEC
         };
@@ -977,9 +977,9 @@ pub const ARM_THUMB: Arch = Arch::Arm(Mode::Thumb);
 pub const STACK_SIZE: usize = 0x1000;
 pub const UNINITIALIZED_BYTE: u8 = 0x00;
 
-pub const PROT_READ: Perm = unicorn::PROT_READ;
-pub const PROT_EXEC: Perm = unicorn::PROT_EXEC;
-pub const PROT_WRITE: Perm = unicorn::PROT_WRITE;
+pub const PROT_READ: Perm = unicorn::Protection::READ;
+pub const PROT_EXEC: Perm = unicorn::Protection::EXEC;
+pub const PROT_WRITE: Perm = unicorn::Protection::WRITE;
 pub const X86_RET: u8 = 0xC3;
 
 fn x86_ret(b: &Vec<u8>) -> bool {
