@@ -15,7 +15,7 @@ use self::num::PrimInt;
 use self::goblin::Object;
 use self::goblin::elf::header::machine_to_str;
 
-use emu::loader::{Arch, Mode};
+use crate::emu::loader::{Arch, Mode};
     lazy_static! {
         pub static ref ROPER_INI_PATH: String
             = match env::var("ROPER_INI_PATH") {

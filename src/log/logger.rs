@@ -2,9 +2,9 @@ use std::thread::{spawn, JoinHandle};
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::{Arc, RwLock};
 
-use gen::{Creature,FitnessOps};
-use fit::CircBuf;
-use par::statics::*;
+use crate::gen::{Creature,FitnessOps};
+use crate::fit::CircBuf;
+use crate::par::statics::*;
 
 /* the statistical functions can be defined as methods on
  * CircBuf

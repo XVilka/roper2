@@ -4,10 +4,10 @@ use std::thread::{spawn, JoinHandle};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::rc::Rc;
 use std::cell::RefCell;
-use emu::loader::{get_mode, read_pc, uc_general_registers, Engine};
-use par::statics::*;
-use gen;
-use gen::phenotype::{VisitRecord, WriteRecord};
+use crate::emu::loader::{get_mode, read_pc, uc_general_registers, Engine};
+use crate::par::statics::*;
+use crate::gen;
+use crate::gen::phenotype::{VisitRecord, WriteRecord};
 /* An expect of 0 will cause this loop to run indefinitely */
 pub fn spawn_hatchery(
     num_engines: usize,

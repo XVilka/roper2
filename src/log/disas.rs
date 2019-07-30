@@ -4,9 +4,9 @@ extern crate unicorn;
 use self::capstone::prelude::*;
 use self::capstone::Capstone;
 
-use emu::loader;
-use emu::loader::{Arch, Mode};
-use par::statics::ARCHITECTURE;
+use crate::emu::loader;
+use crate::emu::loader::{Arch, Mode};
+use crate::par::statics::ARCHITECTURE;
 use std::sync::Mutex;
 
 lazy_static! {

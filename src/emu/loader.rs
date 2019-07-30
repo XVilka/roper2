@@ -1,13 +1,11 @@
 extern crate capstone;
 extern crate goblin;
-extern crate rand;
-extern crate unicorn;
 
 use std::fmt::{Display, Formatter};
 use std::fmt;
 use self::goblin::{elf, Object};
-use self::unicorn::*;
-use par::statics::*;
+use crate::unicorn::*;
+use crate::par::statics::*;
 
   pub struct Engine {
       pub uc: Box<unicorn::Unicorn>,
@@ -433,7 +431,7 @@ fn mem_image_to_mem_table() -> Vec<(u64, usize, unicorn::Protection, *mut u8)> {
     let mut table = Vec::new();
     for seg in &*MEM_IMAGE {
         let mut data = seg.data.clone();
-        let mut data_ptr = data.as_mut_ptr();
+        let data_ptr = data.as_mut_ptr();
         table.push((seg.aligned_start(), seg.aligned_size(), seg.perm, data_ptr));
     }
     table
@@ -445,8 +443,8 @@ fn uc_mem_table(emu: &Unicorn) -> Vec<(u64, usize, unicorn::Protection, Vec<u8>)
         let begin = region.begin;
         let size = (region.end - region.begin) as usize + 1;
         let perms = region.perms;
-        let mut data = emu.mem_read(begin, size).unwrap();
-        let mut ptr = data;
+        let data = emu.mem_read(begin, size).unwrap();
+        let ptr = data;
         table.push((begin, size, perms, ptr));
     }
     table
@@ -840,7 +838,7 @@ pub fn read_static_mem(addr: u64, size: usize) -> Option<Vec<u8>> {
 
 #[test]
 fn test_engine_new() {
-    let emu = Engine::new(*ARCHITECTURE);
+    let _emu = Engine::new(*ARCHITECTURE);
 }
 
 #[test]
@@ -862,17 +860,18 @@ fn test_engine_reset() {
 
 #[test]
 fn stress_test_unicorn_cpu_arm() {
+    use rand::Rng;
     if let Arch::Arm(_) = *ARCHITECTURE {
         let mode = unicorn::Mode::LITTLE_ENDIAN;
-        let mut uc = CpuARM::new(mode).expect("Failed to create CpuARM");
+        let uc = CpuARM::new(mode).expect("Failed to create CpuARM");
         let mem_image: MemImage = MEM_IMAGE.to_vec();
         for seg in mem_image {
             uc.mem_map(seg.aligned_start(), seg.aligned_size(), seg.perm)
                 .unwrap();
             uc.mem_write(seg.aligned_start(), &seg.data).unwrap();
         }
-        let mut rng = thread_rng();
-        for i in 0..1000000 {
+        let mut rng = rand::thread_rng();
+        for _i in 0..1000000 {
             //println!("{}",i);
             uc.emu_start(0x8000 + rng.gen::<u64>() % 0x30000, 0, 0, 1024);
         }
@@ -881,17 +880,18 @@ fn stress_test_unicorn_cpu_arm() {
 
 #[test]
 fn stress_test_unicorn_cpu_x86_64() {
+    use rand::Rng;
     if let Arch::X86(_) = *ARCHITECTURE {
         let mode = unicorn::Mode::MODE_64;
-        let mut uc = CpuX86::new(mode).expect("Failed to create CpuX86");
+        let uc = CpuX86::new(mode).expect("Failed to create CpuX86");
         let mem_image: MemImage = MEM_IMAGE.to_vec();
         for seg in mem_image {
             uc.mem_map(seg.aligned_start(), seg.aligned_size(), seg.perm)
                 .unwrap();
             uc.mem_write(seg.aligned_start(), &seg.data).unwrap();
         }
-        let mut rng = thread_rng();
-        for i in 0..1000000 {
+        let mut rng = rand::thread_rng();
+        for _i in 0..1000000 {
             //println!("{}",i);
             uc.emu_start(0x8000 + rng.gen::<u64>() % 0x30000, 0, 0, 1024);
         }

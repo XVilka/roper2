@@ -1,7 +1,8 @@
-extern crate rand;
-use self::rand::{Rng};
-use gen::*;
-use par::statics::*;
+use rand::{Rng};
+use rand::seq::{IteratorRandom};
+use crate::gen::*;
+use crate::par::statics::*;
+
 fn mutate_arithmetic <R: Rng> (allele: &Allele, rng: &mut R) -> Allele {
   /* start basic, add more options later */
   let delta = rng.gen::<isize>() % 16;
@@ -60,9 +61,8 @@ fn xbits_sites<R: Rng>(
     potential_sites.dedup();
     let num = (potential_sites.len() as f32 * crossover_degree).ceil() as usize;
 
-    let actual_sites = rand::seq::sample_iter(&mut rng,
-                                                  potential_sites.into_iter(), 
-                                                  num).unwrap();
+    let actual_sites = potential_sites.into_iter()
+        .choose_multiple(&mut rng, num);
   /*
     if cfg!(debug_assertions) {
         println!("{:064b}: potential sites: {:?}", xbits, &potential_sites);

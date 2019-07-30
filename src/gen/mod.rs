@@ -4,10 +4,10 @@
  */
 
 pub mod genotype;
-pub use genotype::*;
+pub use crate::genotype::*;
 
 pub mod phenotype;
-pub use phenotype::*;
+pub use crate::phenotype::*;
 
 pub mod seeder;
-pub use seeder::*;
+pub use crate::seeder::*;

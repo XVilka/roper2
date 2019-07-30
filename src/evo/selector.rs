@@ -1,14 +1,13 @@
-extern crate rand; 
-
 use std::thread::{spawn, JoinHandle};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 
-use self::rand::{Rng, SeedableRng};
-use self::rand::isaac::Isaac64Rng;
+use rand::{Rng, SeedableRng};
+use rand::seq::SliceRandom;
+use rand_isaac::isaac64::Isaac64Rng;
 
-use par::statics::*;
-use gen::phenotype::{Creature,FitnessOps};
-use evo::crossover::{homologous_crossover};
+use crate::par::statics::*;
+use crate::gen::phenotype::{Creature,FitnessOps};
+use crate::evo::crossover::{homologous_crossover};
 
 
 
@@ -80,10 +79,9 @@ fn tournament(selection_window: &mut Vec<Creature>,
                  *TSIZE, *MATE_SELECTION_FACTOR, selection_window.len());
         panic!("aarggh");
     };
-    let mut indices = rand::seq::sample_indices(&mut rng,
-                                                selection_window.len(),
+    let mut indices = rand::seq::index::sample(&mut rng, selection_window.len(),
                                                 (*TSIZE as f32 * *MATE_SELECTION_FACTOR)
-                                                .floor() as usize);
+                                                .floor() as usize).into_vec();
     /* TODO: take n times as many combatants as needed, then winnow
      * out those least compatible with first combatant's crossover mask
      */
@@ -169,7 +167,7 @@ fn tournament(selection_window: &mut Vec<Creature>,
          println!("[PARETO] indices = {:?}", indices);
          println!("[PARETO] Front: {:?}", pareto_front);
 */
-         rng.shuffle(&mut pareto_front);
+         pareto_front.shuffle(&mut rng);
     }
     /*
 

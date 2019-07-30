@@ -1,5 +1,4 @@
 extern crate evmap;
-extern crate rand;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -9,13 +8,13 @@ use std::hash::{Hash, Hasher};
 use std::fmt;
 use std::fmt::Display;
 
-use self::rand::{Rng, SeedableRng};
-use self::rand::isaac::Isaac64Rng;
+use rand::{Rng, SeedableRng};
+use rand_isaac::isaac64::Isaac64Rng;
 
-use genotype::*;
-use emu::loader::Mode;
-use par::statics::*;
-use log;
+use crate::genotype::*;
+use crate::emu::loader::Mode;
+use crate::par::statics::*;
+use crate::log;
 
 #[derive(   Clone, Debug, PartialEq, Eq)]
 pub struct WriteRecord {

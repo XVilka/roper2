@@ -2,9 +2,9 @@ use std::thread::{spawn, JoinHandle};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, RwLock};
 
-use gen::*;
-use par::statics::*;
-use circbuf::CircBuf;
+use crate::gen::*;
+use crate::par::statics::*;
+use crate::circbuf::CircBuf;
 
 // use ketos::{Interpreter,FromValueRef};
 
@@ -47,7 +47,7 @@ pub fn spawn_evaluator(
         let mut slave_idx = 0;
         let sliding_window = circbuf.clone();
         for creature in into_eval_rx {
-            let mut creature: Creature = creature;
+            let creature: Creature = creature;
             //eval_fitness(&mut creature, &sliding_window.read().unwrap());
             let &(ref slave_tx, _) = &carousel[slave_idx];
             slave_idx = (slave_idx + 1) % carousel.len();

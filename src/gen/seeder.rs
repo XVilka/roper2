@@ -1,15 +1,13 @@
-extern crate rand;
-
 use std::sync::Arc;
 use std::sync::mpsc::{sync_channel, Receiver};
 use std::thread::{spawn, JoinHandle};
 
-use self::rand::{SeedableRng,Rng};
-use self::rand::isaac::Isaac64Rng;
+use rand::{SeedableRng,Rng};
+use rand_isaac::isaac64::Isaac64Rng;
 
-use genotype::*;
-use phenotype::*;
-use par::statics::*;
+use crate::genotype::*;
+use crate::phenotype::*;
+use crate::par::statics::*;
 
 pub fn new_creature<R: Rng>(rng: &mut R,
                             problem_set: &Vec<Vec<u64>>,

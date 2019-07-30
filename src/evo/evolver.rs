@@ -1,17 +1,16 @@
-extern crate rand;
-
 use std::thread::{spawn, JoinHandle};
 use std::sync::mpsc::{Receiver, SyncSender};
-use self::rand::{SeedableRng,Rng};
-use self::rand::isaac::Isaac64Rng;
+use rand::{SeedableRng};
+use rand::seq::SliceRandom;
+use rand_isaac::isaac64::Isaac64Rng;
 
-use emu;
-use fit;
-use gen;
-use gen::Creature;
-use log;
-use par::statics::*;
-use selector::*;
+use crate::emu;
+use crate::fit;
+use crate::gen;
+use crate::gen::Creature;
+use crate::log;
+use crate::par::statics::*;
+use crate::selector::*;
 
 
 /* The genotype->phenotype pipeline */
@@ -106,7 +105,7 @@ pub fn evolution_pond() -> () {
         count += 1;
         //println!("count {}",count);
         if pond.len() > *SELECTION_WINDOW_SIZE {
-            rng.shuffle(&mut pond);
+            pond.shuffle(&mut rng);
             /* TODO: get random indices, then use remove_swap instead */
             for i in 0..(*SELECTION_WINDOW_SIZE) {
                 match pond.pop() {

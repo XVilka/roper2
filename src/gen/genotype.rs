@@ -3,8 +3,8 @@ extern crate rand;
 use std::fmt::Display;
 use std::fmt;
 use std::collections::HashMap;
-use emu::loader::{find_static_seg, align_inst_addr, Mode, Seg, MEM_IMAGE};
-use par::statics::*;
+use crate::emu::loader::{find_static_seg, align_inst_addr, Mode, Seg, MEM_IMAGE};
+use crate::par::statics::*;
 
 use self::rand::Rng;
 
@@ -228,7 +228,7 @@ impl Chain {
                  */
                 alleles.push(Allele::Input(rng.gen::<usize>() & 0x0F));
             } else {
-                let mut gad = Gadget {
+                let gad = Gadget {
                     entry: addr,
                     ret_addr: 0, /* TODO */
                     sp_delta: 0, /* TODO */
