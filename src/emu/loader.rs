@@ -1,8 +1,6 @@
-use goblin;
-
 use std::fmt::{Display, Formatter};
 use std::fmt;
-use self::goblin::{elf, Object};
+use goblin::{elf, Object};
 use crate::unicorn::*;
 use crate::par::statics::*;
 
@@ -161,9 +159,9 @@ use crate::par::statics::*;
               .iter()
               .filter(|r| r.perms.intersects(PROT_WRITE))
           {
-              let data: Vec<u8> = self.uc
-                  .mem_read(rgn.begin, (rgn.end - rgn.begin) as usize)
-                  .unwrap();
+              let mut data: Vec<u8> =
+                  Vec::with_capacity((rgn.end - rgn.begin) as usize);
+              self.uc.mem_read(rgn.begin, &mut data).unwrap();
               wmem.push(Seg {
                   addr: rgn.begin,
                   perm: rgn.perms,
@@ -262,14 +260,11 @@ use crate::par::statics::*;
                       if size != 1 {
                           return;
                       };
-                      let bytecode = uc.mem_read(pc, 1); /* ret on x86 is C3 */
-                      match bytecode {
-                          Ok(v) => if v[0] == X86_RET {
-                              callback(uc, addr, size)
-                          } else {
-                              ()
-                          },
-                          _ => (),
+                      let mut bytecode : Vec<u8> =
+                          Vec::with_capacity(1);
+                      uc.mem_read(pc, &mut bytecode); /* ret on x86 is C3 */
+                      if bytecode[0] == X86_RET {
+                         callback(uc, addr, size)
                       }
                   };
                   self.hook_exec_mem(_callback)
@@ -277,14 +272,15 @@ use crate::par::statics::*;
               Arch::Arm(Mode::Arm) => {
                   let _callback = move |uc: &Unicorn, addr, size| {
                       let pc = addr; //read_pc(uc).unwrap();
-                      let bytecode = uc.mem_read(pc, 4);
-                      match bytecode {
-                          Ok(v) => if arm_ret(&v) {
+                      let mut bytecode : Vec<u8> =
+                          Vec::with_capacity(4);
+                      match uc.mem_read(pc, &mut bytecode) {
+                        Ok(_) => if arm_ret(&bytecode) {
                               callback(uc, addr, size)
-                          } else {
-                              ()
-                          },
-                          Err(_) => panic!("Failed to read instruction"),
+                        } else {
+                           ()
+                        },
+                        Err(_) => panic!("Failed to read instruction"),
                       }
                   };
                   self.hook_exec_mem(_callback)
@@ -292,9 +288,10 @@ use crate::par::statics::*;
               Arch::Arm(Mode::Thumb) => {
                   let _callback = move |uc: &Unicorn, addr, size| {
                       let pc = addr; //read_pc(uc).unwrap();
-                      let bytecode = uc.mem_read(pc, 2);
-                      match bytecode {
-                          Ok(v) => if thumb_ret(&v) {
+                      let mut bytecode : Vec<u8> =
+                          Vec::with_capacity(2);
+                      match uc.mem_read(pc, &mut bytecode) {
+                          Ok(_) => if thumb_ret(&bytecode) {
                               callback(uc, addr, size)
                           } else {
                               ()
@@ -320,10 +317,11 @@ use crate::par::statics::*;
               Arch::X86(_) => {
                   let _callback = move |uc: &Unicorn, addr: u64, size: u32| {
                       let size = u32::min(size, 15);
-                      let bytecode = uc.mem_read(addr, size as usize);
-                      match bytecode {
+                      let mut bytecode : Vec<u8> =
+                          Vec::with_capacity(size as usize);
+                      match uc.mem_read(addr, &mut bytecode) {
                           /* TODO Better indirect jump detector! */
-                          Ok(v) => if v[0] == 0xFF {
+                          Ok(_) => if bytecode[0] == 0xFF {
                               callback(uc, addr, size)
                           } else {
                               ()
@@ -442,7 +440,8 @@ fn uc_mem_table(emu: &Unicorn) -> Vec<(u64, usize, unicorn::Protection, Vec<u8>)
         let begin = region.begin;
         let size = (region.end - region.begin) as usize + 1;
         let perms = region.perms;
-        let data = emu.mem_read(begin, size).unwrap();
+        let mut data: Vec<u8> = Vec::with_capacity(size);
+        emu.mem_read(begin, &mut data);
         let ptr = data;
         table.push((begin, size, perms, ptr));
     }
@@ -487,7 +486,7 @@ pub fn init_emulator(
             }?;
         } else {
             uc.mem_map(seg.aligned_start(), seg.aligned_size(), seg.perm)?;
-            uc.mem_write(seg.aligned_start(), &seg.data)?; 
+            uc.mem_write(seg.aligned_start(), &seg.data)?;
         }
     }
     Ok(uc)
@@ -987,7 +986,7 @@ fn x86_ret(b: &Vec<u8>) -> bool {
 }
 /* An ARM return is a pop with PC as one of the destination registers */
 fn arm_ret(w: &Vec<u8>) -> bool {
-    w[3] & 0x0E == 0x06 && 
+    w[3] & 0x0E == 0x06 &&
     w[0] & 0x10 == 0x10 && /* The instruction is a pop instruction, */
     w[1] & 0x80 == 0x80 /* and R15 is a destination register     */
 }

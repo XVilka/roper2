@@ -1,4 +1,3 @@
-use capstone;
 use capstone::prelude::*;
 use capstone::Capstone;
 
@@ -6,62 +5,78 @@ use crate::emu::loader;
 use crate::emu::loader::{Arch, Mode};
 use crate::par::statics::ARCHITECTURE;
 
-thread_local! {
-    pub static X86_DISASSEMBLER: Capstone
-        = Capstone::new()
-                  .x86()
-                  .mode(arch::x86::ArchMode::Mode64)
-                  .build()
-                  .expect("Failed to initialize X86_DISASSEMBLER");
+#[inline]
+pub fn x86_disassembler () -> &'static Capstone
+{
+    thread_local! {
+        pub static X86_DISASSEMBLER: &'static Capstone = Box::leak(Box::new(
+            Capstone::new()
+                    .x86()
+                    .mode(arch::x86::ArchMode::Mode64)
+                    .build()
+                    .expect("Failed to initialize X86_DISASSEMBLER")
+        ));
+    }
+    X86_DISASSEMBLER.with(|&x| x) // Copy the 'static Capstone
 }
 
-thread_local! {
-    pub static ARM_DISASSEMBLER: Capstone
-        = Capstone::new()
-                  .arm()
-                  .mode(arch::arm::ArchMode::Arm)
-                  .build()
-                  .expect("Failed to initialize ARM_DISASSEMBLER");
+#[inline]
+pub fn arm_disassembler () -> &'static Capstone
+{
+    thread_local! {
+        pub static ARM_DISASSEMBLER: &'static Capstone = Box::leak(Box::new(
+            Capstone::new()
+                    .arm()
+                    .mode(arch::arm::ArchMode::Arm)
+                    .build()
+                    .expect("Failed to initialize ARM_DISASSEMBLER")
+        ));
+    }
+    ARM_DISASSEMBLER.with(|&x| x) // Copy the 'static Capstone
 }
 
-thread_local! {
-    pub static THUMB_DISASSEMBLER: Capstone
-        = Capstone::new()
-                  .arm()
-                  .mode(arch::arm::ArchMode::Thumb)
-                  .build()
-                  .expect("Failed to initialize THUMB_DISASSEMBLER");
+#[inline]
+pub fn thumb_disassembler () -> &'static Capstone
+{
+    thread_local! {
+        pub static THUMB_DISASSEMBLER: &'static Capstone = Box::leak(Box::new(
+            Capstone::new()
+                    .arm()
+                    .mode(arch::arm::ArchMode::Thumb)
+                    .build()
+                    .expect("Failed to initialize THUMB_DISASSEMBLER")
+        ));
+    }
+    THUMB_DISASSEMBLER.with(|&x| x) // Copy the 'static Capstone
 }
 
 pub fn disas(insts: &Vec<u8>, mode: Mode, num_insts: usize) -> String {
     let arch = ARCHITECTURE.with_mode(mode);
 
     let cs = match arch {
-        Arch::X86(Mode::Bits64) => X86_DISASSEMBLER,
-        Arch::Arm(Mode::Arm) => ARM_DISASSEMBLER,
-        Arch::Arm(Mode::Thumb) => THUMB_DISASSEMBLER,
+        Arch::X86(Mode::Bits64) => x86_disassembler (),
+        Arch::Arm(Mode::Arm) => arm_disassembler (),
+        Arch::Arm(Mode::Thumb) => thumb_disassembler (),
         _ => panic!("not yet implemented"),
     };
-    cs.with(|csd| {
-        if let Ok(dis) = csd.disasm_count(insts, 0, num_insts) {
-            dis.iter()
-                .map(|i| {
-                    format!(
-                        "{} {}",
-                        i.mnemonic().unwrap_or("??"),
-                        i.op_str().unwrap_or("??")
-                    )
-                })
-                .collect::<Vec<String>>()
-                .join("; ")
-        } else {
-            insts
-                .iter()
-                .map(|x| format!("{:02x}", x))
-                .collect::<Vec<String>>()
-                .join(" ")
-        }
-    })
+    if let Ok(dis) = cs.disasm_count(insts, 0, num_insts) {
+        dis.iter()
+            .map(|i| {
+                format!(
+                    "{} {}",
+                    i.mnemonic().unwrap_or("??"),
+                    i.op_str().unwrap_or("??")
+                )
+            })
+            .collect::<Vec<String>>()
+            .join("; ")
+    } else {
+        insts
+            .iter()
+            .map(|x| format!("{:02x}", x))
+            .collect::<Vec<String>>()
+            .join(" ")
+    }
 }
 /* There seem to have been some major API changes between capstone 0.0.4 and
  * the latest version. There may or may not be a reason to try to get this

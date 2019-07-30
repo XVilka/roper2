@@ -1,6 +1,5 @@
 // [[file:~/src/roper2/src/emu/hatchery.org::hatch][hatch]]
-use unicorn; 
-use std::thread::{spawn, JoinHandle}; 
+use std::thread::{spawn, JoinHandle};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -17,11 +16,11 @@ pub fn spawn_hatchery(
     JoinHandle<()>,
 ) {
 
-    let (from_hatch_tx, from_hatch_rx) 
-        : (SyncSender<gen::Creature>, Receiver<gen::Creature>) 
+    let (from_hatch_tx, from_hatch_rx)
+        : (SyncSender<gen::Creature>, Receiver<gen::Creature>)
         = sync_channel(*CHANNEL_SIZE);
-    let (into_hatch_tx, into_hatch_rx) 
-        : (SyncSender<gen::Creature>, Receiver<gen::Creature>) 
+    let (into_hatch_tx, into_hatch_rx)
+        : (SyncSender<gen::Creature>, Receiver<gen::Creature>)
         = sync_channel(*CHANNEL_SIZE);
 
     let handle = spawn(move || {
@@ -59,7 +58,7 @@ pub fn spawn_hatchery(
             }
             coop = (coop + 1) % carousel.len();
             if (counter + num_already_hatched) % 100000 == 0 {
-              println!("[{} Emulations; num_already_hatched = {}; ratio new: {}]", 
+              println!("[{} Emulations; num_already_hatched = {}; ratio new: {}]",
                        counter, num_already_hatched, (counter as f32 / (num_already_hatched + counter) as f32));
             }
             drop(tx);
@@ -68,7 +67,7 @@ pub fn spawn_hatchery(
         while carousel.len() > 0 {
             if let Some((tx, h)) = carousel.pop() {
               println!(")-- cleaning up {:?} --(", tx);
-                drop(tx); 
+                drop(tx);
                 h.join().unwrap();
             };
         }
@@ -76,7 +75,7 @@ pub fn spawn_hatchery(
 
     (into_hatch_tx, from_hatch_rx, handle)
 }
-fn spawn_coop(rx: Receiver<gen::Creature>, 
+fn spawn_coop(rx: Receiver<gen::Creature>,
               tx: SyncSender<gen::Creature>) -> () {
     /* a thread-local emulator */
     let mut emu = Engine::new(*ARCHITECTURE);
@@ -95,11 +94,11 @@ fn spawn_coop(rx: Receiver<gen::Creature>,
     }
 }
 #[inline]
-pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine) 
+pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine)
                    -> gen::Phenome {
     let mut map = gen::Phenome::new();
     {
-        let mut inputs: Vec<gen::Input> = 
+        let mut inputs: Vec<gen::Input> =
             creature.phenome.keys().map(|x| x.clone()).collect();
         assert!(inputs.len() > 0);
         while inputs.len() > 0 {
@@ -112,8 +111,8 @@ pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine)
     map
 }
   #[inline]
-  pub fn hatch(creature: &mut gen::Creature, 
-               input: &gen::Input, 
+  pub fn hatch(creature: &mut gen::Creature,
+               input: &gen::Input,
                emu: &mut Engine) -> gen::Pod {
       let mut payload = creature.genome.pack(input);
       let start_addr = creature.genome.entry().unwrap();
@@ -136,7 +135,7 @@ pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine)
     let writelog = Rc::new(RefCell::new(Vec::new()));
     let retlog = Rc::new(RefCell::new(Vec::new()));
     let jmplog = Rc::new(RefCell::new(Vec::new()));
-    
+
     let mem_write_hook = {
         let writelog = writelog.clone();
         let callback = move |uc: &unicorn::Unicorn,
@@ -157,7 +156,7 @@ pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine)
         };
         emu.hook_writeable_mem(callback)
     };
-    
+
     let visit_hook = {
         let visitor = visitor.clone();
         let callback = move |uc: &unicorn::Unicorn, addr: u64, size: u32| {
@@ -175,7 +174,7 @@ pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine)
         };
         emu.hook_exec_mem(callback)
     };
-    
+
     let ret_hook = {
         let retlog = retlog.clone();
         let callback = move |_uc: &unicorn::Unicorn, addr: u64, _size: u32| {
@@ -185,7 +184,7 @@ pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine)
         };
         emu.hook_rets(callback)
     };
-    
+
     let indirect_jump_hook = {
         let jmplog = jmplog.clone();
         let callback = move |_uc: &unicorn::Unicorn, addr: u64, _size: u32| {
@@ -230,7 +229,7 @@ pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine)
             println!("indirect_jmp_hook didn't take: {:?}", e);
         }
     }
-    
+
     /* Get the behavioural data from the mutable vectors */
     let registers = emu.read_general_registers().unwrap();
     let vtmp = visitor.clone();
