@@ -877,7 +877,33 @@ fn stress_test_unicorn_cpu_arm() {
         let mut rng = rand::thread_rng();
         for _i in 0..1000000 {
             //println!("{}",i);
-            uc.emu_start(0x8000 + rng.gen::<u64>() % 0x30000, 0, 0, 1024).unwrap();
+            match uc.emu_start(0x8000 + rng.gen::<u64>() % 0x30000, 0, 0, 1024) {
+                Ok(_) => (),
+                Err(e) => println!("Unicorn emu_start error: {}", e.msg())
+            }
+        }
+    }
+}
+
+#[test]
+fn stress_test_unicorn_cpu_mips() {
+    use rand::Rng;
+    if let Arch::Mips(_) = *ARCHITECTURE {
+        let mode = unicorn::Mode::BIG_ENDIAN;
+        let uc = CpuMIPS::new(mode).expect("Failed to create CpuMIPS");
+        let mem_image: MemImage = MEM_IMAGE.to_vec();
+        for seg in mem_image {
+            uc.mem_map(seg.aligned_start(), seg.aligned_size(), seg.perm)
+                .unwrap();
+            uc.mem_write(seg.aligned_start(), &seg.data).unwrap();
+        }
+        let mut rng = rand::thread_rng();
+        for _i in 0..1000000 {
+            //println!("{}",i);
+            match uc.emu_start(0x8000 + rng.gen::<u64>() % 0x30000, 0, 0, 1024) {
+                Ok(_) => (),
+                Err(e) => println!("Unicorn emu_start error: {}", e.msg())
+            }
         }
     }
 }
@@ -897,7 +923,10 @@ fn stress_test_unicorn_cpu_x86_64() {
         let mut rng = rand::thread_rng();
         for _i in 0..1000000 {
             //println!("{}",i);
-            uc.emu_start(0x8000 + rng.gen::<u64>() % 0x30000, 0, 0, 1024).unwrap();
+            match uc.emu_start(0x8000 + rng.gen::<u64>() % 0x30000, 0, 0, 1024) {
+                Ok(_) => (),
+                Err(e) => println!("Unicorn emu_start error: {}", e.msg())
+            }
         }
     }
 }
