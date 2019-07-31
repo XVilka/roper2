@@ -868,7 +868,7 @@ fn stress_test_unicorn_cpu_arm() {
     if let Arch::Arm(_) = *ARCHITECTURE {
         let mode = unicorn::Mode::LITTLE_ENDIAN;
         let uc = CpuARM::new(mode).expect("Failed to create CpuARM");
-        let mem_image: MemImage<'a> = MEM_IMAGE.to_vec();
+        let mem_image: MemImage = MEM_IMAGE.to_vec();
         for seg in mem_image {
             uc.mem_map(seg.aligned_start(), seg.aligned_size(), seg.perm)
                 .unwrap();
@@ -877,7 +877,7 @@ fn stress_test_unicorn_cpu_arm() {
         let mut rng = rand::thread_rng();
         for _i in 0..1000000 {
             //println!("{}",i);
-            uc.emu_start(0x8000 + rng.gen::<u64>() % 0x30000, 0, 0, 1024);
+            uc.emu_start(0x8000 + rng.gen::<u64>() % 0x30000, 0, 0, 1024).unwrap();
         }
     }
 }
@@ -888,7 +888,7 @@ fn stress_test_unicorn_cpu_x86_64() {
     if let Arch::X86(_) = *ARCHITECTURE {
         let mode = unicorn::Mode::MODE_64;
         let uc = CpuX86::new(mode).expect("Failed to create CpuX86");
-        let mem_image: MemImage<'a> = MEM_IMAGE.to_vec();
+        let mem_image: MemImage = MEM_IMAGE.to_vec();
         for seg in mem_image {
             uc.mem_map(seg.aligned_start(), seg.aligned_size(), seg.perm)
                 .unwrap();
@@ -897,7 +897,7 @@ fn stress_test_unicorn_cpu_x86_64() {
         let mut rng = rand::thread_rng();
         for _i in 0..1000000 {
             //println!("{}",i);
-            uc.emu_start(0x8000 + rng.gen::<u64>() % 0x30000, 0, 0, 1024);
+            uc.emu_start(0x8000 + rng.gen::<u64>() % 0x30000, 0, 0, 1024).unwrap();
         }
     }
 }
