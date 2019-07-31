@@ -8,8 +8,8 @@ use crate::par::statics::*;
       pub uc: Box<unicorn::Unicorn<'a>>,
       pub arch: Arch,
       pub regids: Vec<i32>,
-      mem: MemImage,
-      writeable_bak: Option<MemImage>,
+      mem: MemImage<'a>,
+      writeable_bak: Option<MemImage<'a>>,
       default_uc_mode: unicorn::Mode,
       saved_context: unicorn::Context,
   }
@@ -17,8 +17,7 @@ use crate::par::statics::*;
   impl <'a> Engine<'a> {
       pub fn new(arch: Arch) -> Self {
           let (_uc_arch, uc_mode) = arch.as_uc();
-          let mut mem: MemImage = mem_image_deep_copy();
-          let emu = init_emulator(arch, &mut mem, false).unwrap();
+          let (emu, mem) = init_emulator(arch, false).unwrap();
           let regids = match arch {
               Arch::Arm(_) => regids(&ARM_REGISTERS),
               Arch::Mips(_) => regids(&MIPS_REGISTERS),
@@ -151,7 +150,7 @@ use crate::par::statics::*;
           }
       }
 
-      pub fn writeable_memory(&self) -> MemImage {
+      pub fn writeable_memory(&self) -> MemImage<'a> {
           let mut wmem = Vec::new();
           for rgn in self.uc
               .mem_regions()
@@ -416,7 +415,7 @@ where
     regs.iter().map(|x| x.to_i32()).collect::<Vec<i32>>()
 }
 
-pub fn mem_image_deep_copy() -> MemImage {
+pub fn mem_image_deep_copy<'a>() -> MemImage<'a>{
     let mut mi = Vec::new();
     for seg in MEM_IMAGE.to_vec() {
         mi.push(seg.deep_copy())
@@ -465,16 +464,17 @@ pub fn get_mode(uc: &Unicorn) -> Mode {
     }
 }
 
-pub fn init_emulator(
+pub fn init_emulator<'a>(
     archmode: Arch,
-    mem: &mut MemImage,
     unsafely: bool,
-) -> Result<Box<Unicorn>, unicorn::Error> {
+) -> Result<(Box<Unicorn<'a>>, MemImage<'a>), unicorn::Error> {
     let (arch, mode) = archmode.as_uc();
 
     let uc = Unicorn::new(arch, mode)?;
 
-    for seg in mem {
+    let mut mem: MemImage = mem_image_deep_copy();
+
+    for seg in &mut mem {
         if unsafely {
             unsafe {
                 uc.mem_map_ptr(
@@ -489,7 +489,7 @@ pub fn init_emulator(
             uc.mem_write(seg.aligned_start(), &seg.data)?;
         }
     }
-    Ok(uc)
+    Ok((uc, mem))
 }
 
 pub fn align_inst_addr(addr: u64, mode: Mode) -> u64 {
@@ -724,10 +724,10 @@ impl Display for Seg {
     }
 }
 
-pub type MemImage = Vec<Seg>;
+pub type MemImage<'a> = Vec<Seg>;
 
 lazy_static! {
-    pub static ref MEM_IMAGE: MemImage
+    pub static ref MEM_IMAGE: MemImage<'static>
         = {
             let obj = Object::parse(&CODE_BUFFER).unwrap();
             let mut segs: Vec<Seg> = Vec::new();
@@ -862,7 +862,7 @@ fn stress_test_unicorn_cpu_arm() {
     if let Arch::Arm(_) = *ARCHITECTURE {
         let mode = unicorn::Mode::LITTLE_ENDIAN;
         let uc = CpuARM::new(mode).expect("Failed to create CpuARM");
-        let mem_image: MemImage = MEM_IMAGE.to_vec();
+        let mem_image: MemImage<'a> = MEM_IMAGE.to_vec();
         for seg in mem_image {
             uc.mem_map(seg.aligned_start(), seg.aligned_size(), seg.perm)
                 .unwrap();
@@ -882,7 +882,7 @@ fn stress_test_unicorn_cpu_x86_64() {
     if let Arch::X86(_) = *ARCHITECTURE {
         let mode = unicorn::Mode::MODE_64;
         let uc = CpuX86::new(mode).expect("Failed to create CpuX86");
-        let mem_image: MemImage = MEM_IMAGE.to_vec();
+        let mem_image: MemImage<'a> = MEM_IMAGE.to_vec();
         for seg in mem_image {
             uc.mem_map(seg.aligned_start(), seg.aligned_size(), seg.perm)
                 .unwrap();
