@@ -26,9 +26,9 @@ use crate::par::statics::*;
           };
           let mut emu = Engine {
               uc: emu,
-              arch: arch,
-              mem: mem,
-              regids: regids,
+              arch,
+              mem,
+              regids,
               default_uc_mode: uc_mode,
               saved_context: unicorn::Context::new(),
               writeable_bak: None,
@@ -69,7 +69,7 @@ use crate::par::statics::*;
       }
 
       /* method for the Engine trait */
-        pub fn hard_reset(&mut self) -> () {
+        pub fn hard_reset(&mut self) {
             self.save_state().unwrap();
             let (uc_arch, uc_mode) = self.arch.as_uc();
             let uc = unicorn::Unicorn::new(uc_arch, uc_mode).unwrap();
@@ -79,7 +79,7 @@ use crate::par::statics::*;
                 uc.mem_write(seg.aligned_start(), &seg.data).unwrap();
             }
             self.uc = uc;
-            self.restore_state().unwrap(); /* i want to see these crashes */
+            self.restore_state().unwrap() /* i want to see these crashes */
         }
 
       pub fn mem_write(&mut self, addr: u64, data: &Vec<u8>) -> Result<(), unicorn::Error> {
@@ -165,7 +165,7 @@ use crate::par::statics::*;
                   addr: rgn.begin,
                   perm: rgn.perms,
                   memsz: (rgn.end - rgn.begin) as usize,
-                  data: data,
+                  data,
                   segtype: SegType::Load,
               });
           }
@@ -278,8 +278,6 @@ use crate::par::statics::*;
                       match uc.mem_read(pc, &mut bytecode) {
                         Ok(_) => if arm_ret(&bytecode) {
                               callback(uc, addr, size)
-                        } else {
-                           ()
                         },
                         Err(_) => panic!("Failed to read instruction"),
                       }
@@ -294,8 +292,6 @@ use crate::par::statics::*;
                       match uc.mem_read(pc, &mut bytecode) {
                           Ok(_) => if thumb_ret(&bytecode) {
                               callback(uc, addr, size)
-                          } else {
-                              ()
                           },
                           Err(_) => panic!("Failed to read instruction"),
                       }
@@ -324,8 +320,6 @@ use crate::par::statics::*;
                           /* TODO Better indirect jump detector! */
                           Ok(_) => if bytecode[0] == 0xFF {
                               callback(uc, addr, size)
-                          } else {
-                              ()
                           },
                           Err(_) => println!("Failed to read instruction! {:?}", bytecode),
                       }
@@ -567,25 +561,25 @@ pub enum Arch {
 
 impl Arch {
     pub fn as_uc(&self) -> (unicorn::Arch, unicorn::Mode) {
-        match self {
-            &Arch::Arm(ref m) => (unicorn::Arch::ARM, m.as_uc()),
-            &Arch::Mips(ref m) => (unicorn::Arch::MIPS, m.as_uc()),
-            &Arch::X86(ref m) => (unicorn::Arch::X86, m.as_uc()),
+        match *self {
+            Arch::Arm(ref m) => (unicorn::Arch::ARM, m.as_uc()),
+            Arch::Mips(ref m) => (unicorn::Arch::MIPS, m.as_uc()),
+            Arch::X86(ref m) => (unicorn::Arch::X86, m.as_uc()),
         }
     }
     pub fn mode(&self) -> Mode {
-        match self {
-            &Arch::Arm(ref m) => m.clone(),
-            &Arch::Mips(ref m) => m.clone(),
-            &Arch::X86(ref m) => m.clone(),
+        match *self {
+            Arch::Arm(ref m) => m.clone(),
+            Arch::Mips(ref m) => m.clone(),
+            Arch::X86(ref m) => m.clone(),
         }
     }
     /// Returns a new Arch enum with specified mode
     pub fn with_mode(&self, mode: Mode) -> Arch {
-        match self {
-            &Arch::Arm(_) => Arch::Arm(mode),
-            &Arch::Mips(_) => Arch::Mips(mode),
-            &Arch::X86(_) => Arch::X86(mode),
+        match *self {
+            Arch::Arm(_) => Arch::Arm(mode),
+            Arch::Mips(_) => Arch::Mips(mode),
+            Arch::X86(_) => Arch::X86(mode),
         }
     }
     //pub fn as_cs(&self) -> capstone::

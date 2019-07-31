@@ -76,7 +76,7 @@ pub fn spawn_hatchery(
     (into_hatch_tx, from_hatch_rx, handle)
 }
 fn spawn_coop(rx: Receiver<gen::Creature>,
-              tx: SyncSender<gen::Creature>) -> () {
+              tx: SyncSender<gen::Creature>) {
     /* a thread-local emulator */
     let mut emu = Engine::new(*ARCHITECTURE);
 
@@ -146,10 +146,10 @@ pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine)
             let mut wmut = writelog.borrow_mut();
             let pc = read_pc(uc).unwrap();
             let write_record = WriteRecord {
-                pc: pc,
+                pc,
                 dest_addr: addr,
                 value: val as u64,
-                size: size,
+                size,
             };
             wmut.push(write_record);
             true
@@ -166,9 +166,9 @@ pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine)
             let registers = uc_general_registers(&uc).unwrap();
             let visit_record = VisitRecord {
                 pc: addr,
-                mode: mode,
+                mode,
                 inst_size: size,
-                registers: registers,
+                registers,
             };
             vmut.push(visit_record);
         };
@@ -239,7 +239,6 @@ pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine)
     let rtmp = retlog.clone();
     let retlog = rtmp.borrow().to_vec().clone();
 
-      let pod = gen::Pod::new(registers, visited, writelog, retlog);
-      pod
+    gen::Pod::new(registers, visited, writelog, retlog)
   }
 // hatch ends here

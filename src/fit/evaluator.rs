@@ -56,7 +56,7 @@ pub fn spawn_evaluator(
             slave_tx.send(creature).unwrap();
         }
 
-        while carousel.len() > 0 {
+        while !carousel.is_empty() {
             if let Some((slave_tx, h)) = carousel.pop() {
                 drop(slave_tx);
                 h.join().unwrap();
@@ -71,7 +71,7 @@ fn slave_eval(
     eval_rx: Receiver<Creature>,
     eval_tx: SyncSender<Creature>,
     _sliding_window: Arc<RwLock<CircBuf>>,
-) -> () {
+) {
     /*
     let interp = Interpreter::new();    
     interp.scope().register_struct_value::<Creature>();

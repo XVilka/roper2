@@ -120,10 +120,10 @@ impl Display for Chain {
         //let mut s = Vec::new();
         //let mut pad_offset = 0;
         for allele in self.alleles.iter() {
-            write!(f, "\t{}\n", allele)?;
+            writeln!(f, "\t{}", allele)?;
         }
-        write!(f, "\tXBITS: {:064b}\n", self.xbits)?;
-        write!(f, "\tGEN: {}\n", self.generation)
+        writeln!(f, "\tXBITS: {:064b}", self.xbits)?;
+        writeln!(f, "\tGEN: {}", self.generation)
     }
 }
 
@@ -131,7 +131,7 @@ impl Chain {
     pub fn len(&self) -> usize {
         self.alleles.len()
     }
-    
+
     pub fn pack(&self, input: &Vec<u64>) -> Vec<u8> {
         let mut p: Vec<u8> = Vec::new();
         /*
@@ -151,8 +151,8 @@ impl Chain {
                 let o = i + pad_offset;
                 let w = match self.pads[o % padnum] {
                     Allele::Const(x) => x,
-                    Allele::Input(i) => if input.len() > 0 { 
-                        input[o % input.len()] 
+                    Allele::Input(i) => if input.len() > 0 {
+                        input[o % input.len()]
                     } else { 0 },
                 };
                 let wp = pack_word(w, *ADDR_WIDTH, ENDIAN);
@@ -232,7 +232,7 @@ impl Chain {
                     entry: addr,
                     ret_addr: 0, /* TODO */
                     sp_delta: 0, /* TODO */
-                    mode: mode,  /* TODO - for ARM decide mode */
+                    mode,  /* TODO - for ARM decide mode */
                 };
 
                 alleles.push(Allele::Gadget(gad));
@@ -254,14 +254,12 @@ impl Chain {
         }
         */
 
-        let genome = Chain {
-            alleles: alleles,
-            xbits: xbits,
+        Chain {
+            alleles,
+            xbits,
             metadata: Metadata::new(),
             generation: 0,
-        };
-
-        genome
+        }
     }
 }
 

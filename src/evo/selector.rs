@@ -32,7 +32,7 @@ pub fn spawn_breeder(
             if sel_window.len() >= window_size {
                 // causing SendError on eval/log,breed //
                 let mut offspring = tournament(&mut sel_window, rng_seed);
-                while sel_window.len() > 0 {
+                while !sel_window.is_empty() {
                     match sel_window.pop() {
                         Some(outgoing) => {
                             match from_breeder_tx.send(outgoing) {
@@ -43,7 +43,7 @@ pub fn spawn_breeder(
                         None => panic!("unreachable?"),
                     }
                 }
-                while offspring.len() > 0 {
+                while !offspring.is_empty() {
                     match offspring.pop() {
                         Some(outgoing) => {
                             match hatch_tx.send(outgoing) {
@@ -136,7 +136,7 @@ fn tournament(selection_window: &mut Vec<Creature>,
                      let fvec_d = c.fitness.as_ref().unwrap();
                      let mut result = true;
                      for i in 0..len {
-                         if result == false { break };
+                         if !result { break };
                          if fvec[i] >= fvec_d[i] {
                            //  println!("[PARETO]=[{}]=> {:?} >= {:?}", index, fvec[i], fvec_d[i]);
                              result = false;
@@ -144,11 +144,13 @@ fn tournament(selection_window: &mut Vec<Creature>,
                              //println!("[PARETO]=[{}]=> {:?} <  {:?}", index, fvec[i], fvec_d[i]);
                          }
                      }
+                     /*
                      if result {
-                         //println!("[PARETO]=[{}]=> fvec {:?} is DOMINATED by fvec_d {:?}", index, fvec, fvec_d);
+                        println!("[PARETO]=[{}]=> fvec {:?} is DOMINATED by fvec_d {:?}", index, fvec, fvec_d);
                      } else {
-                        // println!("[PARETO]=[{}]=> fvec {:?} is not dominated by fvec_d {:?}", index, fvec, fvec_d);
+                        println!("[PARETO]=[{}]=> fvec {:?} is not dominated by fvec_d {:?}", index, fvec, fvec_d);
                      }
+                     */
                      result
                  })
                  .count();

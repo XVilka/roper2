@@ -56,7 +56,7 @@ pub fn pipeline(rx: Receiver<Creature>, tx_refs: Vec<&SyncSender<Creature>>,
                     drop(tx)
                 }
                 std::process::exit(0);
-                
+
             }
         }
     });
@@ -65,7 +65,7 @@ pub fn pipeline(rx: Receiver<Creature>, tx_refs: Vec<&SyncSender<Creature>>,
 
 
 #[allow(unused_variables)]
-pub fn evolution_pond() -> () {
+pub fn evolution_pond() {
 
     let rng_seed = *RNG_SEED;
     let mut rng = Isaac64Rng::from_seed(rng_seed);
@@ -75,7 +75,7 @@ pub fn evolution_pond() -> () {
         *POPULATION_SIZE,
         &vec![vec![1,2]], /* fake problem set */
     );
- 
+
 //    let (refill_pond_tx, refill_pond_rx) = sync_channel(*CHANNEL_SIZE);
 
     println!("[>] spawning logger");
@@ -94,7 +94,7 @@ pub fn evolution_pond() -> () {
     let eval_breed_pipe = pipeline(eval_rx, vec![&breed_tx,
                                                  &logger_tx],
                                    0, "eval/breed+log");
-    
+
 
     let mut pond : Vec<Creature> = Vec::new();
 

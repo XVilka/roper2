@@ -85,13 +85,13 @@ impl Pod {
         retlog: Vec<u64>,
     ) -> Self {
         Pod {
-            registers: registers,
-            visited: visited,
+            registers,
+            visited,
             writelog: collapse_writelog(&writelog),
-            retlog: retlog,
+            retlog,
         }
     }
-    
+
     pub fn retlog(&self) -> &Vec<u64> {
         &self.retlog
     }
@@ -175,7 +175,7 @@ impl Pod {
 
 }
     //unsafe impl Send for Pod {}
-    
+
     /* Retain the Pod after hatching. Initialized genomes in an otherwise
  * empty Pod. Or with an Option<Pod>. We only ever need to hatch a
  * genome /once/ -- even with fitness sharing, we can just re-evaluate
@@ -257,7 +257,7 @@ impl FitFuncs for Phenome {
         self.mean_podwise_fitness(Pod::writelog_len)
     }
 
- 
+
 }
 
 pub trait Pareto {
@@ -339,16 +339,16 @@ impl Creature {
     pub fn new(genome: Chain, index: usize) -> Self {
         let name = baptise_chain(&genome);
         Creature {
-            genome: genome,
+            genome,
             phenome: Phenome::new(),
-            index: index,
+            index,
             metadata: Metadata::new(),
-            name: name,
+            name,
             fitness: None,
         }
     }
 
-    pub fn inherit_problems(&mut self, parent: &Creature) -> () {
+    pub fn inherit_problems(&mut self, parent: &Creature) {
         let mut larval_phenome = Phenome::new();
         let mut has_input = false;
         for (input, _) in parent.phenome.iter() {
@@ -366,11 +366,11 @@ impl Creature {
         }
     }
 
-    pub fn set_ab_fit(&mut self, ab_fit: f32) -> () {
+    pub fn set_ab_fit(&mut self, ab_fit: f32) {
         self.metadata.0.insert("ab_fit", ab_fit);
     }
 
-    pub fn pose_problem(&mut self, input: &Input) -> () {
+    pub fn pose_problem(&mut self, input: &Input) {
         self.phenome.insert(input.clone(), None);
     }
 
