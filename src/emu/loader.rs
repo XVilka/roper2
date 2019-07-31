@@ -261,9 +261,11 @@ use crate::par::statics::*;
                       };
                       let mut bytecode : Vec<u8> =
                           Vec::with_capacity(1);
-                      uc.mem_read(pc, &mut bytecode); /* ret on x86 is C3 */
-                      if bytecode[0] == X86_RET {
-                         callback(uc, addr, size)
+                      match uc.mem_read(pc, &mut bytecode) {
+                        Ok(_) => if bytecode[0] == X86_RET {  /* ret on x86 is C3 */
+                               callback(uc, addr, size)
+                             },
+                        Err(_) => ()
                       }
                   };
                   self.hook_exec_mem(_callback)
@@ -440,9 +442,13 @@ fn uc_mem_table(emu: &Unicorn) -> Vec<(u64, usize, unicorn::Protection, Vec<u8>)
         let size = (region.end - region.begin) as usize + 1;
         let perms = region.perms;
         let mut data: Vec<u8> = Vec::with_capacity(size);
-        emu.mem_read(begin, &mut data);
-        let ptr = data;
-        table.push((begin, size, perms, ptr));
+        match emu.mem_read(begin, &mut data) {
+            Ok (_) => {
+                let ptr = data;
+                table.push((begin, size, perms, ptr))
+            },
+            Err (_) => ()
+        }
     }
     table
 }/* from raw Unicorn instance. Useful inside callbacks, for disassembling */
