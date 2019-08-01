@@ -25,7 +25,7 @@ pub struct WriteRecord {
 }
 
 
-pub fn collapse_writelog(writelog: &Vec<WriteRecord>) -> Vec<WriteRecord> {
+pub fn collapse_writelog(writelog: &[WriteRecord]) -> Vec<WriteRecord> {
     /* create order preserving set (?), keyed to address
     for each record, in order of execution, clobber any existing
     record that writes to the same address */
@@ -444,7 +444,7 @@ impl Population {
     pub fn new(creatures: Vec<Creature>) -> Self {
         let mut mutexed_creatures = Vec::new();
         let mut creatures = creatures;
-        while creatures.len() > 0 {
+        while !creatures.is_empty() {
             mutexed_creatures.push(Mutex::new(Arc::new(RefCell::new(creatures.pop().unwrap()))))
         }
 

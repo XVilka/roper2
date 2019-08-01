@@ -82,7 +82,7 @@ use crate::par::statics::*;
             self.restore_state().unwrap() /* i want to see these crashes */
         }
 
-      pub fn mem_write(&mut self, addr: u64, data: &Vec<u8>) -> Result<(), unicorn::Error> {
+      pub fn mem_write(&mut self, addr: u64, data: &[u8]) -> Result<(), unicorn::Error> {
           self.uc.mem_write(addr, data)
       }
 
@@ -540,14 +540,14 @@ pub enum Mode {
 
 impl Mode {
     pub fn as_uc(&self) -> unicorn::Mode {
-        match self {
-            &Mode::Arm => unicorn::Mode::LITTLE_ENDIAN,
-            &Mode::Thumb => unicorn::Mode::THUMB,
-            &Mode::Be => unicorn::Mode::BIG_ENDIAN,
-            &Mode::Le => unicorn::Mode::LITTLE_ENDIAN,
-            &Mode::Bits16 => unicorn::Mode::MODE_16,
-            &Mode::Bits32 => unicorn::Mode::MODE_32,
-            &Mode::Bits64 => unicorn::Mode::MODE_64,
+        match *self {
+            Mode::Arm => unicorn::Mode::LITTLE_ENDIAN,
+            Mode::Thumb => unicorn::Mode::THUMB,
+            Mode::Be => unicorn::Mode::BIG_ENDIAN,
+            Mode::Le => unicorn::Mode::LITTLE_ENDIAN,
+            Mode::Bits16 => unicorn::Mode::MODE_16,
+            Mode::Bits32 => unicorn::Mode::MODE_32,
+            Mode::Bits64 => unicorn::Mode::MODE_64,
         }
     }
 }
@@ -569,9 +569,9 @@ impl Arch {
     }
     pub fn mode(&self) -> Mode {
         match *self {
-            Arch::Arm(ref m) => m.clone(),
-            Arch::Mips(ref m) => m.clone(),
-            Arch::X86(ref m) => m.clone(),
+            Arch::Arm(ref m) => *m,
+            Arch::Mips(ref m) => *m,
+            Arch::X86(ref m) => *m,
         }
     }
     /// Returns a new Arch enum with specified mode
@@ -1010,15 +1010,15 @@ pub const PROT_EXEC: Perm = unicorn::Protection::EXEC;
 pub const PROT_WRITE: Perm = unicorn::Protection::WRITE;
 pub const X86_RET: u8 = 0xC3;
 
-fn x86_ret(b: &Vec<u8>) -> bool {
+fn x86_ret(b: &[u8]) -> bool {
     b[0] == X86_RET
 }
 /* An ARM return is a pop with PC as one of the destination registers */
-fn arm_ret(w: &Vec<u8>) -> bool {
+fn arm_ret(w: &[u8]) -> bool {
     w[3] & 0x0E == 0x06 &&
     w[0] & 0x10 == 0x10 && /* The instruction is a pop instruction, */
     w[1] & 0x80 == 0x80 /* and R15 is a destination register     */
 }
-fn thumb_ret(w: &Vec<u8>) -> bool {
+fn thumb_ret(w: &[u8]) -> bool {
     w[0] & 0xF6 == 0xB4 && w[0] & 1 == 1
 }

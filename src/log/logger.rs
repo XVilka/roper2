@@ -12,7 +12,7 @@ use crate::par::statics::*;
  */
 
 /* just print to stdout for now, we'll do the file bit later */
-fn log_stats(stats: &Vec<(&'static str, f32)>)
+fn log_stats(stats: &[(&'static str, f32)])
 {
     let mut row = String::new();
     let num_stats = stats.len();
@@ -33,7 +33,7 @@ fn log_stats(stats: &Vec<(&'static str, f32)>)
    pass the headers, explicitly, at the beginning, and then an unlabelled
    sequence of floats every subsequent time.
  */
-fn log_header(stats: &Vec<(&'static str, f32)>)
+fn log_header(stats: &[(&'static str, f32)])
 {
     let mut row = String::new();
     let num_stats = stats.len();
@@ -50,7 +50,7 @@ fn log_header(stats: &Vec<(&'static str, f32)>)
     print!("{}",row)
 }
 
-fn log(stats: &Vec<(&'static str, f32)>, counter: usize) {
+fn log(stats: &[(&'static str, f32)], counter: usize) {
     if counter == 0 {
         log_header(&stats)
     };

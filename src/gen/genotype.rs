@@ -38,7 +38,7 @@ impl Gadget {
             },
             None => {
                 println!("[x] Couldn't find segment for address 0x{:x}!", self.entry);
-                self.clone()
+                self
             }
         }
     }
@@ -76,19 +76,19 @@ pub enum Allele {
 
 impl Allele {
     pub fn entry(&self) -> Option<u64> {
-        match self {
-            &Allele::Gadget(g) => Some(g.entry),
+        match *self {
+            Allele::Gadget(g) => Some(g.entry),
             _ => None,
         }
     }
 
     pub fn add (&self, addend: isize) -> Self {
-        match self {
+        match *self {
             /* FIXME: Assuming limit of 256 input slots, but hardcoded... */
-            &Allele::Input(n)  => Allele::Input(
+            Allele::Input(n)  => Allele::Input(
                 ((n as isize + addend) % 256) as usize
             ),
-            &Allele::Gadget(n) => Allele::Gadget(n.add(addend as i64)),
+            Allele::Gadget(n) => Allele::Gadget(n.add(addend as i64)),
         }
     }
 
@@ -98,10 +98,10 @@ impl Allele {
 
 impl Display for Allele {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
+        match *self {
             //&Allele::Const(x) => write!(f, "[Const {}]", wf(x)),
-            &Allele::Input(i) => write!(f, "[Input Slot #{}]", i),
-            &Allele::Gadget(g) => write!(f, "{}", g),
+            Allele::Input(i) => write!(f, "[Input Slot #{}]", i),
+            Allele::Gadget(g) => write!(f, "{}", g),
         }
     }
 }
@@ -132,7 +132,7 @@ impl Chain {
         self.alleles.len()
     }
 
-    pub fn pack(&self, input: &Vec<u64>) -> Vec<u8> {
+    pub fn pack(&self, input: &[u64]) -> Vec<u8> {
         let mut p: Vec<u8> = Vec::new();
         /*
         let mut pad_offset = 0;
@@ -168,14 +168,14 @@ impl Chain {
             } else {
                 start = true;
             };
-            let w = match allele {
-                //&Allele::Const(c) => c,
-                &Allele::Input(i) => if input.len() > 0 {
+            let w = match *allele {
+                //Allele::Const(c) => c,
+                Allele::Input(i) => if input.len() > 0 {
                     input[i % input.len()]
                 } else {
                     0
                 },
-                &Allele::Gadget(g) => g.entry,
+                Allele::Gadget(g) => g.entry,
             };
             p.extend_from_slice(&pack_word(w, *ADDR_WIDTH, ENDIAN));
         }
@@ -221,7 +221,7 @@ impl Chain {
             let mode = ARCHITECTURE.mode(); /* choose mode randomly if ARM */
             let addr = align_inst_addr(unaligned_addr, mode);
             /* sp_delta-informed chance of choosing const or input TODO */
-            if alleles.len() > 0 && rng.gen::<f32>() < input_slot_freq {
+            if !alleles.is_empty() && rng.gen::<f32>() < input_slot_freq {
                 /* NOTE: Artificially adding an upper bound on the number of inputs
                  * at 15. This will almost certainly be more than enough, and will
                  * make the input slots easier to read.
@@ -312,7 +312,7 @@ pub fn pack_word32le(word: u32) -> Vec<u8> {
     p
 }
 
-pub fn pack_word32le_vec(v: &Vec<u32>) -> Vec<u8> {
+pub fn pack_word32le_vec(v: &[u32]) -> Vec<u8> {
     let mut p: Vec<u8> = Vec::new();
     for word in v {
         p.extend_from_slice(&pack_word32le(*word))
@@ -330,7 +330,7 @@ pub fn pack_word64le(word: u64) -> Vec<u8> {
     p
 }
 
-pub fn pack_word64le_vec(v: &Vec<u64>) -> Vec<u8> {
+pub fn pack_word64le_vec(v: &[u64]) -> Vec<u8> {
     let mut p: Vec<u8> = Vec::new();
     for word in v {
         p.extend_from_slice(&pack_word64le(*word));

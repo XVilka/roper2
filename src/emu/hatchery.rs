@@ -99,9 +99,9 @@ pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine)
     let mut map = gen::Phenome::new();
     {
         let mut inputs: Vec<gen::Input> =
-            creature.phenome.keys().map(|x| x.clone()).collect();
-        assert!(inputs.len() > 0);
-        while inputs.len() > 0 {
+            creature.phenome.keys().cloned().collect();
+        assert!(!inputs.is_empty());
+        while !inputs.is_empty() {
             let input = inputs.pop().unwrap();
             /* This can't really be threaded, due to the unsendability of emu */
             let pod = hatch(creature, &input, emu);

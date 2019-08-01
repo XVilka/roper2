@@ -10,7 +10,7 @@ use crate::phenotype::*;
 use crate::par::statics::*;
 
 pub fn new_creature<R: Rng>(rng: &mut R,
-                            problem_set: &Vec<Vec<u64>>,
+                            problem_set: &[Vec<u64>],
                             index: usize) -> Creature {
     /* create a Creature::from_seed function */
     let len_range = (*MIN_CREATURE_LENGTH, *MAX_CREATURE_LENGTH);
@@ -26,14 +26,14 @@ pub fn new_creature<R: Rng>(rng: &mut R,
 
 pub fn spawn_seeder(
     num_wanted: usize,
-    problem_set: &Vec<Vec<u64>>,
+    problem_set: &[Vec<u64>],
 ) -> (Receiver<Creature>, JoinHandle<()>)
 {
     println!("[+] Spawning seeder");
     let seed = RNG_SEED.clone();
     let (from_seeder_tx, from_seeder_rx) = sync_channel(*CHANNEL_SIZE);
     //    let (into_seeder_tx, into_seeder_rx) = channel();
-    let problem_set = Arc::new(problem_set.clone());
+    let problem_set = Arc::new(problem_set.to_owned());
     let seeder_handle = spawn(move || {
         let problem_set = problem_set.clone();
         let mut rng = Isaac64Rng::from_seed(seed);

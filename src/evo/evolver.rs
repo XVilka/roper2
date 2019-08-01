@@ -28,7 +28,7 @@ pub fn pipeline(rx: Receiver<Creature>, tx_refs: Vec<&SyncSender<Creature>>,
     for tx_ref in tx_refs.into_iter() {
         txs.push(tx_ref.clone());
     }
-    let h = spawn(move || {
+    spawn(move || {
         let mut count = 0;
         for x in rx {
             count += 1;
@@ -59,8 +59,7 @@ pub fn pipeline(rx: Receiver<Creature>, tx_refs: Vec<&SyncSender<Creature>>,
 
             }
         }
-    });
-    h
+    })
 }
 
 
