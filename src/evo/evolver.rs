@@ -53,7 +53,7 @@ pub fn pipeline(rx: Receiver<Creature>, tx_refs: Vec<&SyncSender<Creature>>,
             } else {
                 println!("[!] Limit of {} on {} pipeline reached. Concluding.", limit, note);
                 for tx in txs.iter() {
-                    drop(tx)
+                    drop(tx.to_owned())
                 }
                 std::process::exit(0);
 
