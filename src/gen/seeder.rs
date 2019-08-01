@@ -30,7 +30,7 @@ pub fn spawn_seeder(
 ) -> (Receiver<Creature>, JoinHandle<()>)
 {
     println!("[+] Spawning seeder");
-    let seed = RNG_SEED.clone();
+    let seed = *RNG_SEED;
     let (from_seeder_tx, from_seeder_rx) = sync_channel(*CHANNEL_SIZE);
     //    let (into_seeder_tx, into_seeder_rx) = channel();
     let problem_set = Arc::new(problem_set.to_owned());

@@ -50,7 +50,7 @@ pub fn thumb_disassembler () -> &'static Capstone
     THUMB_DISASSEMBLER.with(|&x| x) // Copy the 'static Capstone
 }
 
-pub fn disas(insts: &Vec<u8>, mode: Mode, num_insts: usize) -> String {
+pub fn disas(insts: &[u8], mode: Mode, num_insts: usize) -> String {
     let arch = ARCHITECTURE.with_mode(mode);
 
     let cs = match arch {

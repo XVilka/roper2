@@ -18,7 +18,7 @@ pub fn spawn_breeder(
     let hatch_tx = hatch_tx.clone();
     let (from_breeder_tx, from_breeder_rx) = sync_channel(*CHANNEL_SIZE);
     let (into_breeder_tx, into_breeder_rx) = sync_channel(*CHANNEL_SIZE);
-    let rng_seed = RNG_SEED.clone();
+    let rng_seed = *RNG_SEED;
     let sel_handle = spawn(move || {
         /* TODO */
         let mut sel_window: Vec<Creature> = Vec::with_capacity(window_size);
@@ -178,7 +178,7 @@ fn tournament(selection_window: &mut Vec<Creature>,
     // *TSIZE must be >= 4.
     /* The dead */
     /* The parents */
-    assert!(pareto_front.len() >= 1);
+    assert!(!pareto_front.is_empty());
     let (p0, p1) : (usize, usize);
     p0 = pareto_front[0];
     if pareto_front.len() >= 2 {

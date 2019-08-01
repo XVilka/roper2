@@ -61,13 +61,13 @@ pub fn spawn_hatchery(
               println!("[{} Emulations; num_already_hatched = {}; ratio new: {}]",
                        counter, num_already_hatched, (counter as f32 / (num_already_hatched + counter) as f32));
             }
-            drop(tx);
+            drop(tx.to_owned());
         }
         /* clean up the carousel */
         while carousel.len() > 0 {
             if let Some((tx, h)) = carousel.pop() {
               println!(")-- cleaning up {:?} --(", tx);
-                drop(tx);
+                drop(tx.to_owned());
                 h.join().unwrap();
             };
         }

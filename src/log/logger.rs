@@ -40,7 +40,7 @@ fn log_header(stats: &[(&'static str, f32)])
     let mut counter = 0;
     for (name, _stat) in stats.iter() {
         counter += 1;
-        row.push_str(&format!("{}", name));
+        row.push_str(&name.to_string());
         if counter < num_stats {
             row.push_str("\t")
         } else {
@@ -106,7 +106,7 @@ pub fn spawn_logger(circbuf_size: usize, log_freq: usize) -> (SyncSender<Creatur
             let mean_fitness = sum_fit / count as f32;
             let mean_gen = sum_gen / count as f32;
             let mean_len = sum_len as f32 / count as f32;
-            log(&vec![
+            log(&[
                 ("MAX-GEN", max_gen as f32),
                 ("MEAN-GEN", mean_gen),
                 ("MEAN-FIT", mean_fitness),
