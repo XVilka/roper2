@@ -871,9 +871,10 @@ fn stress_test_unicorn_cpu_arm() {
         let mut rng = rand::thread_rng();
         for _i in 0..1000000 {
             //println!("{}",i);
-            match uc.emu_start(0x8000 + rng.gen::<u64>() % 0x30000, 0, 0, 1024) {
+            let address = 0x8000 + rng.gen::<u64>() % 0x30000;
+            match uc.emu_start(address, 0, 0, 1024) {
                 Ok(_) => (),
-                Err(e) => println!("Unicorn emu_start error: {}", e.msg())
+                Err(e) => println!("Unicorn emu_start error @ 0x{:x}: {}", address, e.msg())
             }
         }
     }
@@ -894,9 +895,10 @@ fn stress_test_unicorn_cpu_mips() {
         let mut rng = rand::thread_rng();
         for _i in 0..1000000 {
             //println!("{}",i);
-            match uc.emu_start(0x8000 + rng.gen::<u64>() % 0x30000, 0, 0, 1024) {
+            let address = 0x8000 + rng.gen::<u64>() % 0x30000;
+            match uc.emu_start(address, 0, 0, 1024) {
                 Ok(_) => (),
-                Err(e) => println!("Unicorn emu_start error: {}", e.msg())
+                Err(e) => println!("Unicorn emu_start error @ 0x{:x}: {}", address, e.msg())
             }
         }
     }
@@ -917,9 +919,10 @@ fn stress_test_unicorn_cpu_x86_64() {
         let mut rng = rand::thread_rng();
         for _i in 0..1000000 {
             //println!("{}",i);
-            match uc.emu_start(0x8000 + rng.gen::<u64>() % 0x30000, 0, 0, 1024) {
+            let address = 0x8000 + rng.gen::<u64>() % 0x30000;
+            match uc.emu_start(address, 0, 0, 1024) {
                 Ok(_) => (),
-                Err(e) => println!("Unicorn emu_start error: {}", e.msg())
+                Err(e) => println!("Unicorn emu_start error @ 0x{:x}: {}", address, e.msg())
             }
         }
     }
