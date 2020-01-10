@@ -1,13 +1,13 @@
-use rand::{Rng};
-use rand::seq::{IteratorRandom};
 use crate::gen::*;
 use crate::par::statics::*;
+use rand::seq::IteratorRandom;
+use rand::Rng;
 
-fn mutate_arithmetic <R: Rng> (allele: &Allele, rng: &mut R) -> Allele {
-  /* start basic, add more options later */
-  let delta = rng.gen::<isize>() % 16;
-  //println!("[+] mutate_arithmetic: delta = {}", delta);
-  allele.add(delta)
+fn mutate_arithmetic<R: Rng>(allele: &Allele, rng: &mut R) -> Allele {
+    /* start basic, add more options later */
+    let delta = rng.gen::<isize>() % 16;
+    //println!("[+] mutate_arithmetic: delta = {}", delta);
+    allele.add(delta)
 }
 /// One-point crossover, between two u64s, as bitvectors.
 fn onept_bits<R: Rng>(a: u64, b: u64, rng: &mut R) -> u64 {
@@ -28,17 +28,14 @@ fn uniform_bits<R: Rng>(a: u64, b: u64, rng: &mut R) -> u64 {
 /// A simple mutation operator to use on the crossover mask,
 /// prior to passing it on to the offspring.
 fn random_bit_flip<R: Rng>(u: u64, rng: &mut R) -> u64 {
-  if rng.gen::<f32>() < *CROSSOVER_MASK_MUT_RATE {
-      u ^ (1u64 << (rng.gen::<u64>() % 64))
-  } else {
-      u
-  }
+    if rng.gen::<f32>() < *CROSSOVER_MASK_MUT_RATE {
+        u ^ (1u64 << (rng.gen::<u64>() % 64))
+    } else {
+        u
+    }
 }
 
-fn combine_xbits<R: Rng>(m_bits: u64,
-                         p_bits: u64,
-                         combiner: MaskOp,
-                         mut rng: &mut R) -> u64 {
+fn combine_xbits<R: Rng>(m_bits: u64, p_bits: u64, combiner: MaskOp, mut rng: &mut R) -> u64 {
     match combiner {
         MaskOp::Xor => m_bits ^ p_bits,
         MaskOp::Nand => !(m_bits & p_bits),
@@ -63,7 +60,7 @@ fn xbits_sites<R: Rng>(
 
     /* actual sites */
     potential_sites.into_iter().choose_multiple(&mut rng, num)
-  /*
+    /*
     if cfg!(debug_assertions) {
         println!("{:064b}: potential sites: {:?}", xbits, &potential_sites);
     }
@@ -73,24 +70,29 @@ fn xbits_sites<R: Rng>(
     }
      */
 }
-pub fn homologous_crossover<R>(mother: &Creature,
-                               father: &Creature,
-                               mut rng: &mut R) -> Vec<Creature>
-where R: Rng, {
+pub fn homologous_crossover<R>(
+    mother: &Creature,
+    father: &Creature,
+    mut rng: &mut R,
+) -> Vec<Creature>
+where
+    R: Rng,
+{
     let crossover_degree = *CROSSOVER_DEGREE;
-    let bound = usize::min(mother.genome.alleles.len(),
-                           father.genome.alleles.len());
-    let xbits = combine_xbits(mother.genome.xbits,
-                              father.genome.xbits,
-                              *CROSSOVER_MASK_COMBINER, rng);
-    let child_xbits = combine_xbits(mother.genome.xbits,
-                                    father.genome.xbits,
-                                    *CROSSOVER_MASK_INHERITANCE, rng);
-    let sites = xbits_sites(xbits,
-                            bound,
-                            crossover_degree,
-                            &mut rng,
+    let bound = usize::min(mother.genome.alleles.len(), father.genome.alleles.len());
+    let xbits = combine_xbits(
+        mother.genome.xbits,
+        father.genome.xbits,
+        *CROSSOVER_MASK_COMBINER,
+        rng,
     );
+    let child_xbits = combine_xbits(
+        mother.genome.xbits,
+        father.genome.xbits,
+        *CROSSOVER_MASK_INHERITANCE,
+        rng,
+    );
+    let sites = xbits_sites(xbits, bound, crossover_degree, &mut rng);
     let mut offspring = Vec::new();
     let parents = vec![mother, father];
     let mut i = 0;
@@ -118,8 +120,7 @@ where R: Rng, {
                 };
             egg[*site] = codon;
         }
-        let child_gen =
-            usize::max(p0.genome.generation, p1.genome.generation) + 1;
+        let child_gen = usize::max(p0.genome.generation, p1.genome.generation) + 1;
         let zygote = Chain {
             alleles: egg,
             metadata: Metadata::new(),
@@ -129,18 +130,19 @@ where R: Rng, {
         /* The index will be filled in later, prior to filling
          * the graves of the fallen
          */
-        if zygote.entry() != None { /* screen out the gadgetless */
+        if zygote.entry() != None {
+            /* screen out the gadgetless */
             offspring.push(Creature::new(zygote, 0));
         };
         /*
-        if cfg!(debug_assertions) {
-            println!("WITH XBITS {:064b}, SITES: {:?}, MATED\n{}\nAND\n{}\nPRODUCING\n{}",
-                     xbits,
-                     &sites.iter().map(|x| x % bound).collect::<Vec<usize>>(),
-                     p0, p1, &offspring[offspring.len()-1]);
-            println!("************************************************************");
-        }
-      */
+          if cfg!(debug_assertions) {
+              println!("WITH XBITS {:064b}, SITES: {:?}, MATED\n{}\nAND\n{}\nPRODUCING\n{}",
+                       xbits,
+                       &sites.iter().map(|x| x % bound).collect::<Vec<usize>>(),
+                       p0, p1, &offspring[offspring.len()-1]);
+              println!("************************************************************");
+          }
+        */
     }
     offspring
 }

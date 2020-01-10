@@ -6,8 +6,7 @@ use crate::emu::loader::{Arch, Mode};
 use crate::par::statics::ARCHITECTURE;
 
 #[inline]
-pub fn x86_disassembler () -> &'static Capstone
-{
+pub fn x86_disassembler() -> &'static Capstone {
     thread_local! {
         pub static X86_DISASSEMBLER: &'static Capstone = Box::leak(Box::new(
             Capstone::new()
@@ -21,8 +20,7 @@ pub fn x86_disassembler () -> &'static Capstone
 }
 
 #[inline]
-pub fn arm_disassembler () -> &'static Capstone
-{
+pub fn arm_disassembler() -> &'static Capstone {
     thread_local! {
         pub static ARM_DISASSEMBLER: &'static Capstone = Box::leak(Box::new(
             Capstone::new()
@@ -36,8 +34,7 @@ pub fn arm_disassembler () -> &'static Capstone
 }
 
 #[inline]
-pub fn thumb_disassembler () -> &'static Capstone
-{
+pub fn thumb_disassembler() -> &'static Capstone {
     thread_local! {
         pub static THUMB_DISASSEMBLER: &'static Capstone = Box::leak(Box::new(
             Capstone::new()
@@ -54,9 +51,9 @@ pub fn disas(insts: &[u8], mode: Mode, num_insts: usize) -> String {
     let arch = ARCHITECTURE.with_mode(mode);
 
     let cs = match arch {
-        Arch::X86(Mode::Bits64) => x86_disassembler (),
-        Arch::Arm(Mode::Arm) => arm_disassembler (),
-        Arch::Arm(Mode::Thumb) => thumb_disassembler (),
+        Arch::X86(Mode::Bits64) => x86_disassembler(),
+        Arch::Arm(Mode::Arm) => arm_disassembler(),
+        Arch::Arm(Mode::Thumb) => thumb_disassembler(),
         _ => panic!("not yet implemented"),
     };
     if let Ok(dis) = cs.disasm_count(insts, 0, num_insts) {

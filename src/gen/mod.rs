@@ -2,7 +2,6 @@
  * This module is for the the structures making up the genotype
  * representation.
  */
-
 pub mod genotype;
 pub use crate::genotype::*;
 

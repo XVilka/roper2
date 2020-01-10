@@ -1,29 +1,26 @@
-
-
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
-use std::sync::{Arc, Mutex};
-use std::hash::{Hash, Hasher};
+use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Display;
+use std::hash::{Hash, Hasher};
+use std::sync::{Arc, Mutex};
 
 use rand::{Rng, SeedableRng};
 use rand_isaac::isaac64::Isaac64Rng;
 
-use crate::genotype::*;
 use crate::emu::loader::Mode;
-use crate::par::statics::*;
+use crate::genotype::*;
 use crate::log;
+use crate::par::statics::*;
 
-#[derive(   Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WriteRecord {
     pub pc: u64,
     pub dest_addr: u64,
     pub value: u64,
     pub size: usize,
 }
-
 
 pub fn collapse_writelog(writelog: &[WriteRecord]) -> Vec<WriteRecord> {
     /* create order preserving set (?), keyed to address
@@ -35,16 +32,15 @@ pub fn collapse_writelog(writelog: &[WriteRecord]) -> Vec<WriteRecord> {
         record.insert(wr.dest_addr, (order_of_exec, wr.clone()));
     }
     let mut collapsed = record.values().collect::<Vec<&(usize, WriteRecord)>>();
-    collapsed.sort_by_key(|(ord,_)| ord);
+    collapsed.sort_by_key(|(ord, _)| ord);
     let mut result = Vec::new();
-    for (_,w) in collapsed {
+    for (_, w) in collapsed {
         result.push(w.clone())
     }
     result
 }
 
-
-#[derive(   Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VisitRecord {
     pub pc: u64,
     pub mode: Mode,
@@ -67,7 +63,7 @@ impl Display for VisitRecord {
     }
 }
 
-#[derive(   Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Pod {
     pub registers: Vec<u64>,
     pub visited: Vec<VisitRecord>,
@@ -108,9 +104,9 @@ impl Pod {
             record.insert(wr.dest_addr, (order_of_exec, wr.clone()));
         }
         let mut collapsed = record.values().collect::<Vec<&(usize, WriteRecord)>>();
-        collapsed.sort_by_key(|(ord,_)| ord);
+        collapsed.sort_by_key(|(ord, _)| ord);
         let mut result = Vec::new();
-        for (_,w) in collapsed {
+        for (_, w) in collapsed {
             result.push(w.clone())
         }
         result
@@ -166,13 +162,12 @@ impl Pod {
         //retscore as f32 / upper_bound as f32
         //if rl.len() == 0 { 1.0 } else { 1.0 / rl.len() as f32 }
         rl.len() /* setting 0 as least fitness rather than 1.0
-         * may turn out to be less restrictive */
+                  * may turn out to be less restrictive */
     }
-
 }
-    //unsafe impl Send for Pod {}
+//unsafe impl Send for Pod {}
 
-    /* Retain the Pod after hatching. Initialized genomes in an otherwise
+/* Retain the Pod after hatching. Initialized genomes in an otherwise
  * empty Pod. Or with an Option<Pod>. We only ever need to hatch a
  * genome /once/ -- even with fitness sharing, we can just re-evaluate
  * the hatched phenome with different parameters. But that part of the
@@ -190,21 +185,22 @@ pub trait FitnessOps {
 }
 
 impl FitnessOps for Fitness {
-    fn mean(&self) -> f32{
-       self.iter().sum::<f32>() / self.len() as f32
+    fn mean(&self) -> f32 {
+        self.iter().sum::<f32>() / self.len() as f32
     }
 }
 
 pub trait FitFuncs {
     fn avg_retlog_len(&self) -> usize;
-    fn mean_podwise_fitness<F>(&self, ff: F) -> f32 where F: FnMut(&Pod) -> usize;
+    fn mean_podwise_fitness<F>(&self, ff: F) -> f32
+    where
+        F: FnMut(&Pod) -> usize;
     fn ff_mean_uniq_retcount(&self) -> f32;
     fn ff_mean_retcount(&self) -> f32;
     fn ff_mean_writecount(&self) -> f32;
 }
 
 impl FitFuncs for Phenome {
-
     fn avg_retlog_len(&self) -> usize {
         let mut sum = 0;
         let mut count = 0;
@@ -213,7 +209,7 @@ impl FitFuncs for Phenome {
                 Some(pod) => {
                     count += 1;
                     sum += pod.retlog.len();
-                },
+                }
                 None => (),
             }
         }
@@ -228,9 +224,10 @@ impl FitFuncs for Phenome {
     where
         F: FnMut(&Pod) -> usize,
     {
-        let scores = self.values()
-            .filter(| &pod | *pod != None)
-            .map(| ref pod | pod.as_ref().unwrap())
+        let scores = self
+            .values()
+            .filter(|&pod| *pod != None)
+            .map(|ref pod| pod.as_ref().unwrap())
             .map(ff)
             .collect::<Vec<usize>>();
         //println!("[mean_podwise_fitness] {:?}", scores);
@@ -252,8 +249,6 @@ impl FitFuncs for Phenome {
     fn ff_mean_writecount(&self) -> f32 {
         self.mean_podwise_fitness(Pod::writelog_len)
     }
-
-
 }
 
 pub trait Pareto {
@@ -264,17 +259,17 @@ pub trait Pareto {
 impl Pareto for Fitness {
     fn dominated_by(&self, other: &Fitness) -> bool {
         let mut dom = true;
-        for (x,y) in self.iter().zip(other.iter()) {
+        for (x, y) in self.iter().zip(other.iter()) {
             if x > y {
                 dom = false;
-                break
+                break;
             }
         }
         dom
     }
 }
 
-#[derive(   Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct Creature {
     pub genome: Chain,
     pub phenome: Phenome,
@@ -314,7 +309,7 @@ fn baptise_chain(chain: &Chain) -> String {
     let hash: u64 = hasher.finish();
     /* now, convert that hash to a pronounceable name */
     let consonants = vec![
-        'b', 'c', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm', 'n', 'v', 'w', 'x', 'z', 'y'
+        'b', 'c', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm', 'n', 'v', 'w', 'x', 'z', 'y',
     ];
     let vowels = vec!['a', 'e', 'i', 'o', 'u'];
     let hbytes = pack_word64le(hash);
@@ -411,7 +406,7 @@ impl Creature {
      * phenotype has developed -- and false otherwise.
      */
     pub fn has_hatched(&self) -> bool {
-        0 < self.phenome.iter().filter(|(_,v)| v != &&None).count()
+        0 < self.phenome.iter().filter(|(_, v)| v != &&None).count()
     }
 
     pub fn generation(&self) -> usize {

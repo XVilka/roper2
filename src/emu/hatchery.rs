@@ -1,12 +1,12 @@
 // [[file:~/src/roper2/src/emu/hatchery.org::hatch][hatch]]
-use std::thread::{spawn, JoinHandle};
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
-use std::rc::Rc;
-use std::cell::RefCell;
 use crate::emu::loader::{get_mode, read_pc, uc_general_registers, Engine};
-use crate::par::statics::*;
 use crate::gen;
 use crate::gen::phenotype::{VisitRecord, WriteRecord};
+use crate::par::statics::*;
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+use std::thread::{spawn, JoinHandle};
 /* An expect of 0 will cause this loop to run indefinitely */
 pub fn spawn_hatchery(
     num_engines: usize,
@@ -15,13 +15,10 @@ pub fn spawn_hatchery(
     Receiver<gen::Creature>,
     JoinHandle<()>,
 ) {
-
-    let (from_hatch_tx, from_hatch_rx)
-        : (SyncSender<gen::Creature>, Receiver<gen::Creature>)
-        = sync_channel(*CHANNEL_SIZE);
-    let (into_hatch_tx, into_hatch_rx)
-        : (SyncSender<gen::Creature>, Receiver<gen::Creature>)
-        = sync_channel(*CHANNEL_SIZE);
+    let (from_hatch_tx, from_hatch_rx): (SyncSender<gen::Creature>, Receiver<gen::Creature>) =
+        sync_channel(*CHANNEL_SIZE);
+    let (into_hatch_tx, into_hatch_rx): (SyncSender<gen::Creature>, Receiver<gen::Creature>) =
+        sync_channel(*CHANNEL_SIZE);
 
     let handle = spawn(move || {
         let mut carousel = Vec::new();
@@ -58,15 +55,19 @@ pub fn spawn_hatchery(
             }
             coop = (coop + 1) % carousel.len();
             if (counter + num_already_hatched) % 100000 == 0 {
-              println!("[{} Emulations; num_already_hatched = {}; ratio new: {}]",
-                       counter, num_already_hatched, (counter as f32 / (num_already_hatched + counter) as f32));
+                println!(
+                    "[{} Emulations; num_already_hatched = {}; ratio new: {}]",
+                    counter,
+                    num_already_hatched,
+                    (counter as f32 / (num_already_hatched + counter) as f32)
+                );
             }
             drop(tx.to_owned());
         }
         /* clean up the carousel */
         while !carousel.is_empty() {
             if let Some((tx, h)) = carousel.pop() {
-              println!(")-- cleaning up {:?} --(", tx);
+                println!(")-- cleaning up {:?} --(", tx);
                 drop(tx.to_owned());
                 h.join().unwrap();
             };
@@ -75,8 +76,7 @@ pub fn spawn_hatchery(
 
     (into_hatch_tx, from_hatch_rx, handle)
 }
-fn spawn_coop(rx: Receiver<gen::Creature>,
-              tx: SyncSender<gen::Creature>) {
+fn spawn_coop(rx: Receiver<gen::Creature>, tx: SyncSender<gen::Creature>) {
     /* a thread-local emulator */
     let mut emu = Engine::new(*ARCHITECTURE);
 
@@ -94,12 +94,10 @@ fn spawn_coop(rx: Receiver<gen::Creature>,
     }
 }
 #[inline]
-pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine)
-                   -> gen::Phenome {
+pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine) -> gen::Phenome {
     let mut map = gen::Phenome::new();
     {
-        let mut inputs: Vec<gen::Input> =
-            creature.phenome.keys().cloned().collect();
+        let mut inputs: Vec<gen::Input> = creature.phenome.keys().cloned().collect();
         assert!(!inputs.is_empty());
         while !inputs.is_empty() {
             let input = inputs.pop().unwrap();
@@ -110,26 +108,24 @@ pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine)
     }
     map
 }
-  #[inline]
-  pub fn hatch(creature: &mut gen::Creature,
-               input: &gen::Input,
-               emu: &mut Engine) -> gen::Pod {
-      let mut payload = creature.genome.pack(input);
-      let start_addr = creature.genome.entry().unwrap();
-      /* A missing entry point should be considered an error,
-       * since we try to guard against this in our generation
-       * functions.
-       */
-      let (stack_addr, stack_size) = emu.find_stack();
-      payload.truncate(stack_size / 2);
-      let _payload_len = payload.len();
-      let stack_entry = stack_addr + (stack_size / 2) as u64;
-      emu.restore_state().unwrap();
+#[inline]
+pub fn hatch(creature: &mut gen::Creature, input: &gen::Input, emu: &mut Engine) -> gen::Pod {
+    let mut payload = creature.genome.pack(input);
+    let start_addr = creature.genome.entry().unwrap();
+    /* A missing entry point should be considered an error,
+     * since we try to guard against this in our generation
+     * functions.
+     */
+    let (stack_addr, stack_size) = emu.find_stack();
+    payload.truncate(stack_size / 2);
+    let _payload_len = payload.len();
+    let stack_entry = stack_addr + (stack_size / 2) as u64;
+    emu.restore_state().unwrap();
 
-      /* load payload **/
-      emu.mem_write(stack_entry, &payload)
-          .expect("mem_write fail in hatch");
-      emu.set_sp(stack_entry + *ADDR_WIDTH as u64).unwrap();
+    /* load payload **/
+    emu.mem_write(stack_entry, &payload)
+        .expect("mem_write fail in hatch");
+    emu.set_sp(stack_entry + *ADDR_WIDTH as u64).unwrap();
 
     let visitor: Rc<RefCell<Vec<VisitRecord>>> = Rc::new(RefCell::new(Vec::new()));
     let writelog = Rc::new(RefCell::new(Vec::new()));
@@ -194,7 +190,7 @@ pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine)
         emu.hook_indirect_jumps(callback)
     };
 
-      let _res = emu.start(start_addr, 0, 0, 1024);
+    let _res = emu.start(start_addr, 0, 0, 1024);
 
     /* Now, clean up the hooks */
     match visit_hook {
@@ -240,5 +236,5 @@ pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine)
     let retlog = rtmp.borrow().to_vec();
 
     gen::Pod::new(registers, visited, writelog, retlog)
-  }
+}
 // hatch ends here

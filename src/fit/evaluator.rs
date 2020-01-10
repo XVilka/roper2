@@ -1,10 +1,10 @@
-use std::thread::{spawn, JoinHandle};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, RwLock};
+use std::thread::{spawn, JoinHandle};
 
+use crate::circbuf::CircBuf;
 use crate::gen::*;
 use crate::par::statics::*;
-use crate::circbuf::CircBuf;
 
 // use ketos::{Interpreter,FromValueRef};
 
@@ -73,11 +73,11 @@ fn slave_eval(
     _sliding_window: Arc<RwLock<CircBuf>>,
 ) {
     /*
-    let interp = Interpreter::new();    
+    let interp = Interpreter::new();
     interp.scope().register_struct_value::<Creature>();
     interp.scope().register_struct_value::<Pod>();
     interp.run_code(r#"
-    ;; Some fitness evaluation script here.    
+    ;; Some fitness evaluation script here.
     (define (eval-fitness creature)
         0.5)
     "#, None).unwrap();
@@ -91,13 +91,12 @@ fn slave_eval(
         //let f = interp.call("eval-fitness",
         //                    (creature).into()).unwrap();
         //let fit = f32::from_value_ref(&f).unwrap();
-        creature.fitness =
-            Some(vec![
-                /* Here's where you list the fitness scores */
-                creature.phenome.ff_mean_uniq_retcount(),
-                creature.phenome.ff_mean_retcount(),
-                creature.phenome.ff_mean_writecount(),
-            ]);
+        creature.fitness = Some(vec![
+            /* Here's where you list the fitness scores */
+            creature.phenome.ff_mean_uniq_retcount(),
+            creature.phenome.ff_mean_retcount(),
+            creature.phenome.ff_mean_writecount(),
+        ]);
         assert!(creature.has_hatched());
         eval_tx.send(creature).unwrap();
     }

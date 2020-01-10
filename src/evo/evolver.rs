@@ -1,8 +1,8 @@
-use std::thread::{spawn, JoinHandle};
-use std::sync::mpsc::{Receiver, SyncSender};
-use rand::{SeedableRng};
 use rand::seq::SliceRandom;
+use rand::SeedableRng;
 use rand_isaac::isaac64::Isaac64Rng;
+use std::sync::mpsc::{Receiver, SyncSender};
+use std::thread::{spawn, JoinHandle};
 
 use crate::emu;
 use crate::fit;
@@ -11,7 +11,6 @@ use crate::gen::Creature;
 use crate::log;
 use crate::par::statics::*;
 use crate::selector::*;
-
 
 /* The genotype->phenotype pipeline */
 /* -- spawns hatchery
@@ -22,9 +21,13 @@ use crate::selector::*;
  * -- reproduction routine sends them back here, to go on to hatchery
  */
 
-pub fn pipeline(rx: Receiver<Creature>, tx_refs: Vec<&SyncSender<Creature>>,
-                limit: usize, note: &'static str) -> JoinHandle<()> {
-    let mut txs : Vec<SyncSender<Creature>> = Vec::new();
+pub fn pipeline(
+    rx: Receiver<Creature>,
+    tx_refs: Vec<&SyncSender<Creature>>,
+    limit: usize,
+    note: &'static str,
+) -> JoinHandle<()> {
+    let mut txs: Vec<SyncSender<Creature>> = Vec::new();
     for tx_ref in tx_refs.into_iter() {
         txs.push(tx_ref.clone());
     }
@@ -36,7 +39,7 @@ pub fn pipeline(rx: Receiver<Creature>, tx_refs: Vec<&SyncSender<Creature>>,
                     for tx in txs[1..].iter() {
                         match tx.send(x.clone()) {
                             Err(e) => println!("[tx:{}] {}: {:?}", tx_num, note, e),
-                            Ok(_k) =>  (), //println!("[tx:{}] {} ok {:?}", tx_num, note, _k),
+                            Ok(_k) => (), //println!("[tx:{}] {} ok {:?}", tx_num, note, _k),
                         }
                         tx_num += 1;
                     }
@@ -45,55 +48,50 @@ pub fn pipeline(rx: Receiver<Creature>, tx_refs: Vec<&SyncSender<Creature>>,
                     Err(e) => {
                         println!("[tx:0] {}: {:?}", note, e);
                         std::process::exit(99);
-                    },
-                    Ok(_k) =>  (), //println!("[tx:0] {} ok {:?}", note, _k),
+                    }
+                    Ok(_k) => (), //println!("[tx:0] {} ok {:?}", note, _k),
                 }
             } else {
-                println!("[!] Limit of {} on {} pipeline reached. Concluding.", limit, note);
+                println!(
+                    "[!] Limit of {} on {} pipeline reached. Concluding.",
+                    limit, note
+                );
                 for tx in txs.iter() {
                     drop(tx.to_owned())
                 }
                 std::process::exit(0);
-
             }
         }
     })
 }
 
-
 #[allow(unused_variables)]
 pub fn evolution_pond() {
-
     let rng_seed = *RNG_SEED;
     let mut rng = Isaac64Rng::from_seed(rng_seed);
 
     println!("[>] spawning seeder");
     let (seed_rx, seed_hdl) = gen::spawn_seeder(
         *POPULATION_SIZE,
-        &vec![vec![1,2]], /* fake problem set */
+        &vec![vec![1, 2]], /* fake problem set */
     );
 
-//    let (refill_pond_tx, refill_pond_rx) = sync_channel(*CHANNEL_SIZE);
+    //    let (refill_pond_tx, refill_pond_rx) = sync_channel(*CHANNEL_SIZE);
 
     println!("[>] spawning logger");
-    let (logger_tx, logger_hdl) = log::spawn_logger(*POPULATION_SIZE/10, *POPULATION_SIZE/10);
+    let (logger_tx, logger_hdl) = log::spawn_logger(*POPULATION_SIZE / 10, *POPULATION_SIZE / 10);
     println!("[>] spawning hatchery");
     let (hatch_tx, hatch_rx, hatch_hdl) = emu::spawn_hatchery(*NUM_ENGINES);
     println!("[>] spawning evaluator");
     let (eval_tx, eval_rx, eval_hdl) = fit::spawn_evaluator(*NUM_ENGINES, 2048);
     println!("[>] spawning breeder");
-    let (breed_tx, breed_rx, sel_hdl) = spawn_breeder(*SELECTION_WINDOW_SIZE,
-                                                      &hatch_tx); // ?
-
+    let (breed_tx, breed_rx, sel_hdl) = spawn_breeder(*SELECTION_WINDOW_SIZE, &hatch_tx); // ?
 
     let seed_hatch_pipe = pipeline(seed_rx, vec![&hatch_tx], 0, "seed/hatch");
     let hatch_eval_pipe = pipeline(hatch_rx, vec![&eval_tx], 0, "hatch/eval");
-    let eval_breed_pipe = pipeline(eval_rx, vec![&breed_tx,
-                                                 &logger_tx],
-                                   0, "eval/breed+log");
+    let eval_breed_pipe = pipeline(eval_rx, vec![&breed_tx, &logger_tx], 0, "eval/breed+log");
 
-
-    let mut pond : Vec<Creature> = Vec::new();
+    let mut pond: Vec<Creature> = Vec::new();
 
     /* Initialize the pond with already hatched and evaluated creatures */
     for (count, critter) in breed_rx.iter().enumerate() {
@@ -104,18 +102,17 @@ pub fn evolution_pond() {
             /* TODO: get random indices, then use remove_swap instead */
             for i in 0..(*SELECTION_WINDOW_SIZE) {
                 match pond.pop() {
-                    Some (critter) => {
-                        let res =
-                            if critter.has_hatched() {
-                                breed_tx.send(critter)
-                            } else {
-                                hatch_tx.send(critter)
-                            };
+                    Some(critter) => {
+                        let res = if critter.has_hatched() {
+                            breed_tx.send(critter)
+                        } else {
+                            hatch_tx.send(critter)
+                        };
                         match res {
                             Ok(_) => (),
                             Err(e) => println!("error {:?}", e),
                         }
-                    },
+                    }
                     None => println!("No critters"),
                 }
             }
@@ -124,10 +121,8 @@ pub fn evolution_pond() {
 
     println!("[+] Population initialized.");
 
-
     /* safety net */
     loop {}
-
 }
 
 /* The phenotype->genotype pipeline */

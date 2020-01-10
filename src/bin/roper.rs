@@ -1,6 +1,3 @@
-
-
-
 use libroper::evo::evolver::evolution_pond;
 
 fn main() {

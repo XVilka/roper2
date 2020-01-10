@@ -1,5 +1,5 @@
-use std::collections::VecDeque;
 use crate::gen::Creature;
+use std::collections::VecDeque;
 
 pub struct CircBuf {
     pub buf: VecDeque<Creature>,

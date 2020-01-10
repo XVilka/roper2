@@ -1,10 +1,10 @@
 use rand;
 
-use std::fmt::Display;
-use std::fmt;
-use std::collections::HashMap;
-use crate::emu::loader::{find_static_seg, align_inst_addr, Mode, Seg, MEM_IMAGE};
+use crate::emu::loader::{align_inst_addr, find_static_seg, Mode, Seg, MEM_IMAGE};
 use crate::par::statics::*;
+use std::collections::HashMap;
+use std::fmt;
+use std::fmt::Display;
 
 use self::rand::Rng;
 
@@ -17,7 +17,6 @@ pub struct Gadget {
 }
 
 impl Gadget {
-
     fn add(self, other: i64) -> Gadget {
         let seg = find_static_seg(self.entry);
         match seg {
@@ -33,16 +32,15 @@ impl Gadget {
                     ret_addr: self.ret_addr, /* TODO: Update ret_addr with analysis */
                     entry: new_entry,
                     sp_delta: self.sp_delta, /* TODO: Update with analysis */
-                    mode: self.mode, /* TODO: update if in ARM and other is odd */
+                    mode: self.mode,         /* TODO: update if in ARM and other is odd */
                 }
-            },
+            }
             None => {
                 println!("[x] Couldn't find segment for address 0x{:x}!", self.entry);
                 self
             }
         }
     }
-
 }
 //unsafe impl Send for Gadget {}
 
@@ -61,13 +59,13 @@ impl Display for Gadget {
     }
 }
 
-#[derive(    Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Endian {
     Big,
     Little,
 }
 
-#[derive(    Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Allele {
     //Const(u64),
     Input(usize),
@@ -82,17 +80,13 @@ impl Allele {
         }
     }
 
-    pub fn add (&self, addend: isize) -> Self {
+    pub fn add(&self, addend: isize) -> Self {
         match *self {
             /* FIXME: Assuming limit of 256 input slots, but hardcoded... */
-            Allele::Input(n)  => Allele::Input(
-                ((n as isize + addend) % 256) as usize
-            ),
+            Allele::Input(n) => Allele::Input(((n as isize + addend) % 256) as usize),
             Allele::Gadget(n) => Allele::Gadget(n.add(addend as i64)),
         }
     }
-
-
 }
 //unsafe impl Send for Allele {}
 
@@ -106,14 +100,13 @@ impl Display for Allele {
     }
 }
 
-#[derive(    Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Chain {
     pub alleles: Vec<Allele>,
     pub metadata: Metadata,
     pub xbits: u64, /* used to coordinate crossover and speciation */
     pub generation: usize,
 }
-
 
 impl Display for Chain {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -174,11 +167,13 @@ impl Chain {
             };
             let w = match *allele {
                 //Allele::Const(c) => c,
-                Allele::Input(i) => if !input.is_empty() {
-                    input[i % input.len()]
-                } else {
-                    0
-                },
+                Allele::Input(i) => {
+                    if !input.is_empty() {
+                        input[i % input.len()]
+                    } else {
+                        0
+                    }
+                }
                 Allele::Gadget(g) => g.entry,
             };
             p.extend_from_slice(&pack_word(w, *ADDR_WIDTH, ENDIAN));
@@ -236,7 +231,7 @@ impl Chain {
                     entry: addr,
                     ret_addr: 0, /* TODO */
                     sp_delta: 0, /* TODO */
-                    mode,  /* TODO - for ARM decide mode */
+                    mode,        /* TODO - for ARM decide mode */
                 };
 
                 alleles.push(Allele::Gadget(gad));
