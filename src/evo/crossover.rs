@@ -29,7 +29,7 @@ fn uniform_bits<R: Rng>(a: u64, b: u64, rng: &mut R) -> u64 {
 /// prior to passing it on to the offspring.
 fn random_bit_flip<R: Rng>(u: u64, rng: &mut R) -> u64 {
   if rng.gen::<f32>() < *CROSSOVER_MASK_MUT_RATE {
-      u ^ (1u64 << (rng.gen::<u64>() % 64)) 
+      u ^ (1u64 << (rng.gen::<u64>() % 64))
   } else {
       u
   }
@@ -61,8 +61,8 @@ fn xbits_sites<R: Rng>(
     potential_sites.dedup();
     let num = (potential_sites.len() as f32 * crossover_degree).ceil() as usize;
 
-    let actual_sites = potential_sites.into_iter()
-        .choose_multiple(&mut rng, num);
+    /* actual sites */
+    potential_sites.into_iter().choose_multiple(&mut rng, num)
   /*
     if cfg!(debug_assertions) {
         println!("{:064b}: potential sites: {:?}", xbits, &potential_sites);
@@ -72,24 +72,23 @@ fn xbits_sites<R: Rng>(
         println!("actual sites: {:?}", &actual_sites);
     }
      */
-    actual_sites
 }
 pub fn homologous_crossover<R>(mother: &Creature,
                                father: &Creature,
                                mut rng: &mut R) -> Vec<Creature>
 where R: Rng, {
     let crossover_degree = *CROSSOVER_DEGREE;
-    let bound = usize::min(mother.genome.alleles.len(), 
+    let bound = usize::min(mother.genome.alleles.len(),
                            father.genome.alleles.len());
-    let xbits = combine_xbits(mother.genome.xbits, 
-                              father.genome.xbits, 
+    let xbits = combine_xbits(mother.genome.xbits,
+                              father.genome.xbits,
                               *CROSSOVER_MASK_COMBINER, rng);
-    let child_xbits = combine_xbits(mother.genome.xbits, 
-                                    father.genome.xbits, 
+    let child_xbits = combine_xbits(mother.genome.xbits,
+                                    father.genome.xbits,
                                     *CROSSOVER_MASK_INHERITANCE, rng);
     let sites = xbits_sites(xbits,
-                            bound, 
-                            crossover_degree, 
+                            bound,
+                            crossover_degree,
                             &mut rng,
     );
     let mut offspring = Vec::new();

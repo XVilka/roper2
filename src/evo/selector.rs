@@ -158,8 +158,7 @@ fn tournament(selection_window: &mut Vec<Creature>,
              num_dominators == 0 /* return true only for the pareto front */
          };
          pareto_front = indices.iter()
-         .filter(pareto_filter)
-         .map(|n| *n)
+         .filter(pareto_filter).copied()
          .collect::<Vec<usize>>();
 /*
          let for_show = indices.iter() .map(|i| ((selection_window[*i]).fitness.as_ref().unwrap().clone())) .collect::<Vec<Vec<usize>>>();

@@ -31,10 +31,8 @@ pub fn collapse_writelog(writelog: &[WriteRecord]) -> Vec<WriteRecord> {
     record that writes to the same address */
     /* each item is a pair: order of execution, write record */
     let mut record: HashMap<u64, (usize, WriteRecord)> = HashMap::new();
-    let mut order_of_exec = 0;
-    for wr in writelog.iter() {
+    for (order_of_exec, wr) in writelog.iter().enumerate() {
         record.insert(wr.dest_addr, (order_of_exec, wr.clone()));
-        order_of_exec += 1;
     }
     let mut collapsed = record.values().collect::<Vec<&(usize, WriteRecord)>>();
     collapsed.sort_by_key(|(ord,_)| ord);
@@ -106,10 +104,8 @@ impl Pod {
         record that writes to the same address */
         /* each item is a pair: order of execution, write record */
         let mut record: HashMap<u64, (usize, WriteRecord)> = HashMap::new();
-        let mut order_of_exec = 0;
-        for wr in self.writelog.iter() {
+        for (order_of_exec, wr) in self.writelog.iter().enumerate() {
             record.insert(wr.dest_addr, (order_of_exec, wr.clone()));
-            order_of_exec += 1;
         }
         let mut collapsed = record.values().collect::<Vec<&(usize, WriteRecord)>>();
         collapsed.sort_by_key(|(ord,_)| ord);
@@ -238,7 +234,7 @@ impl FitFuncs for Phenome {
             .map(ff)
             .collect::<Vec<usize>>();
         //println!("[mean_podwise_fitness] {:?}", scores);
-        if scores.len() == 0 {
+        if scores.is_empty() {
             0.0
         } else {
             scores.iter().sum::<usize>() as f32 / scores.len() as f32

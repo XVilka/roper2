@@ -16,9 +16,7 @@ fn log_stats(stats: &[(&'static str, f32)])
 {
     let mut row = String::new();
     let num_stats = stats.len();
-    let mut counter = 0;
-    for (_name, stat) in stats.iter() {
-        counter += 1;
+    for (counter, (_name, stat)) in stats.iter().enumerate() {
         row.push_str(&format!("{:6.6}", stat));
         if counter < num_stats {
             row.push_str("\t")
@@ -37,9 +35,7 @@ fn log_header(stats: &[(&'static str, f32)])
 {
     let mut row = String::new();
     let num_stats = stats.len();
-    let mut counter = 0;
-    for (name, _stat) in stats.iter() {
-        counter += 1;
+    for (counter, (name, _stat)) in stats.iter().enumerate() {
         row.push_str(&name.to_string());
         if counter < num_stats {
             row.push_str("\t")
@@ -74,8 +70,7 @@ pub fn spawn_logger(circbuf_size: usize, log_freq: usize) -> (SyncSender<Creatur
     let _stat_handle = spawn(move || {
         let mut max_fitness = 0.0;
         let mut max_gen = 0;
-        let mut log_counter = 0;
-        for _ in analyse_rx {
+        for (log_counter, _) in analyse_rx.into_iter().enumerate() {
             let window = window.read().unwrap();
             /* TODO here is where the analyses will be dispatched from */
             //println!("circbuf holds {}", window.buf.len());
@@ -85,9 +80,9 @@ pub fn spawn_logger(circbuf_size: usize, log_freq: usize) -> (SyncSender<Creatur
             let mut count = 0;
             for creature in window.buf.iter() {
                 assert!(creature.has_hatched());
-                match &creature.fitness {
-                    &None => panic!("-- creature with no fitness in logger"),
-                    &Some (ref fvec) => {
+                match creature.fitness {
+                    None => panic!("-- creature with no fitness in logger"),
+                    Some (ref fvec) => {
                         count += 1;
                         let fit = fvec.mean() as f32;
                         if fit > max_fitness {
@@ -113,14 +108,13 @@ pub fn spawn_logger(circbuf_size: usize, log_freq: usize) -> (SyncSender<Creatur
                 ("MAX-FIT", max_fitness),
                 ("MEAN-LEN", mean_len),
             ], log_counter);
-            log_counter += 1;
       //      println!("[LOGGER] max gen: {}, mean gen: {:4.4}, mean fitness: {:1.5}, max fitness: {}, mean length: {}", max_gen, mean_gen, mean_fitness, max_fit, mean_len);
             //sleep(Duration::from_millis(1000));
         }
     });
 
     let analysis_period = log_freq as u64;
-    let received = circbuf.clone();
+    let received = circbuf;
     let handle = spawn(move || {
         let mut count: u64 = 0;
         for incoming in log_rx {

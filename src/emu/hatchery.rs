@@ -64,7 +64,7 @@ pub fn spawn_hatchery(
             drop(tx.to_owned());
         }
         /* clean up the carousel */
-        while carousel.len() > 0 {
+        while !carousel.is_empty() {
             if let Some((tx, h)) = carousel.pop() {
               println!(")-- cleaning up {:?} --(", tx);
                 drop(tx.to_owned());
@@ -186,9 +186,9 @@ pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine)
     };
 
     let indirect_jump_hook = {
-        let jmplog = jmplog.clone();
+        let newjmplog = jmplog;
         let callback = move |_uc: &unicorn::Unicorn, addr: u64, _size: u32| {
-            let mut jmplog = jmplog.borrow_mut();
+            let mut jmplog = newjmplog.borrow_mut();
             jmplog.push(addr);
         };
         emu.hook_indirect_jumps(callback)
@@ -232,12 +232,12 @@ pub fn hatch_cases(creature: &mut gen::Creature, emu: &mut Engine)
 
     /* Get the behavioural data from the mutable vectors */
     let registers = emu.read_general_registers().unwrap();
-    let vtmp = visitor.clone();
-    let visited = vtmp.borrow().to_vec().clone();
-    let wtmp = writelog.clone();
-    let writelog = wtmp.borrow().to_vec().clone();
-    let rtmp = retlog.clone();
-    let retlog = rtmp.borrow().to_vec().clone();
+    let vtmp = visitor;
+    let visited = vtmp.borrow().to_vec();
+    let wtmp = writelog;
+    let writelog = wtmp.borrow().to_vec();
+    let rtmp = retlog;
+    let retlog = rtmp.borrow().to_vec();
 
     gen::Pod::new(registers, visited, writelog, retlog)
   }

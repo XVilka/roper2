@@ -125,7 +125,7 @@ use crate::par::statics::*;
                   stack = Some(region.clone());
               };
           }
-          let stack = stack.expect(&format!(
+          let stack = stack.unwrap_or_else(|| panic!(
               "[!] Could not find stack bottom! Regions: {:?}",
               regions
           ));
@@ -261,11 +261,10 @@ use crate::par::statics::*;
                       };
                       let mut bytecode : Vec<u8> =
                           Vec::with_capacity(1);
-                      match uc.mem_read(pc, &mut bytecode) {
-                        Ok(_) => if bytecode[0] == X86_RET {  /* ret on x86 is C3 */
+                      if uc.mem_read(pc, &mut bytecode).is_ok() {
+                        if bytecode[0] == X86_RET {  /* ret on x86 is C3 */
                                callback(uc, addr, size)
-                             },
-                        Err(_) => ()
+                        }
                       }
                   };
                   self.hook_exec_mem(_callback)
@@ -275,11 +274,12 @@ use crate::par::statics::*;
                       let pc = addr; //read_pc(uc).unwrap();
                       let mut bytecode : Vec<u8> =
                           Vec::with_capacity(4);
-                      match uc.mem_read(pc, &mut bytecode) {
-                        Ok(_) => if arm_ret(&bytecode) {
+                      if uc.mem_read(pc, &mut bytecode).is_ok() {
+                        if arm_ret(&bytecode) {
                               callback(uc, addr, size)
-                        },
-                        Err(_) => panic!("Failed to read instruction"),
+                        }
+                      } else {
+                        panic!("Failed to read instruction")
                       }
                   };
                   self.hook_exec_mem(_callback)
@@ -289,11 +289,12 @@ use crate::par::statics::*;
                       let pc = addr; //read_pc(uc).unwrap();
                       let mut bytecode : Vec<u8> =
                           Vec::with_capacity(2);
-                      match uc.mem_read(pc, &mut bytecode) {
-                          Ok(_) => if thumb_ret(&bytecode) {
+                      if uc.mem_read(pc, &mut bytecode).is_ok() {
+                          if thumb_ret(&bytecode) {
                               callback(uc, addr, size)
-                          },
-                          Err(_) => panic!("Failed to read instruction"),
+                          }
+                      } else {
+                        panic!("Failed to read instruction")
                       }
                   };
                   self.hook_exec_mem(_callback)
@@ -316,12 +317,13 @@ use crate::par::statics::*;
                       let size = u32::min(size, 15);
                       let mut bytecode : Vec<u8> =
                           Vec::with_capacity(size as usize);
-                      match uc.mem_read(addr, &mut bytecode) {
+                      if uc.mem_read(addr, &mut bytecode).is_ok() {
                           /* TODO Better indirect jump detector! */
-                          Ok(_) => if bytecode[0] == 0xFF {
+                          if bytecode[0] == 0xFF {
                               callback(uc, addr, size)
-                          },
-                          Err(_) => println!("Failed to read instruction! {:?}", bytecode),
+                          }
+                      } else {
+                          println!("Failed to read instruction! {:?}", bytecode)
                       }
                   };
                   self.hook_exec_mem(_callback)
@@ -436,12 +438,9 @@ fn uc_mem_table(emu: &Unicorn) -> Vec<(u64, usize, unicorn::Protection, Vec<u8>)
         let size = (region.end - region.begin) as usize + 1;
         let perms = region.perms;
         let mut data: Vec<u8> = Vec::with_capacity(size);
-        match emu.mem_read(begin, &mut data) {
-            Ok (_) => {
+        if emu.mem_read(begin, &mut data).is_ok() {
                 let ptr = data;
                 table.push((begin, size, perms, ptr))
-            },
-            Err (_) => ()
         }
     }
     table
@@ -539,8 +538,8 @@ pub enum Mode {
 }
 
 impl Mode {
-    pub fn as_uc(&self) -> unicorn::Mode {
-        match *self {
+    pub fn as_uc(self) -> unicorn::Mode {
+        match self {
             Mode::Arm => unicorn::Mode::LITTLE_ENDIAN,
             Mode::Thumb => unicorn::Mode::THUMB,
             Mode::Be => unicorn::Mode::BIG_ENDIAN,
@@ -560,23 +559,23 @@ pub enum Arch {
 }
 
 impl Arch {
-    pub fn as_uc(&self) -> (unicorn::Arch, unicorn::Mode) {
-        match *self {
+    pub fn as_uc(self) -> (unicorn::Arch, unicorn::Mode) {
+        match self {
             Arch::Arm(ref m) => (unicorn::Arch::ARM, m.as_uc()),
             Arch::Mips(ref m) => (unicorn::Arch::MIPS, m.as_uc()),
             Arch::X86(ref m) => (unicorn::Arch::X86, m.as_uc()),
         }
     }
-    pub fn mode(&self) -> Mode {
-        match *self {
+    pub fn mode(self) -> Mode {
+        match self {
             Arch::Arm(ref m) => *m,
             Arch::Mips(ref m) => *m,
             Arch::X86(ref m) => *m,
         }
     }
     /// Returns a new Arch enum with specified mode
-    pub fn with_mode(&self, mode: Mode) -> Arch {
-        match *self {
+    pub fn with_mode(self, mode: Mode) -> Arch {
+        match self {
             Arch::Arm(_) => Arch::Arm(mode),
             Arch::Mips(_) => Arch::Mips(mode),
             Arch::X86(_) => Arch::X86(mode),
@@ -632,9 +631,9 @@ impl SegType {
             _ => SegType::Other,
         }
     }
-    pub fn loadable(&self) -> bool {
+    pub fn loadable(self) -> bool {
         match self {
-            &SegType::Load => true,
+            SegType::Load => true,
             _ => false,
         }
     }

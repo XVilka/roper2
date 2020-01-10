@@ -132,6 +132,10 @@ impl Chain {
         self.alleles.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.alleles.is_empty()
+    }
+
     pub fn pack(&self, input: &[u64]) -> Vec<u8> {
         let mut p: Vec<u8> = Vec::new();
         /*
@@ -170,7 +174,7 @@ impl Chain {
             };
             let w = match *allele {
                 //Allele::Const(c) => c,
-                Allele::Input(i) => if input.len() > 0 {
+                Allele::Input(i) => if !input.is_empty() {
                     input[i % input.len()]
                 } else {
                     0
@@ -274,7 +278,7 @@ impl Chain {
  * Accessor functions will provide an easy interface.
  */
 
-#[derive(   Clone, Debug, PartialEq)]
+#[derive(Default, Clone, Debug, PartialEq)]
 pub struct Metadata(pub HashMap<&'static str, f32>);
 impl Metadata {
     pub fn new() -> Self {

@@ -29,9 +29,7 @@ pub fn pipeline(rx: Receiver<Creature>, tx_refs: Vec<&SyncSender<Creature>>,
         txs.push(tx_ref.clone());
     }
     spawn(move || {
-        let mut count = 0;
-        for x in rx {
-            count += 1;
+        for (count, x) in rx.into_iter().enumerate() {
             if limit == 0 || count < limit {
                 if txs.len() > 1 {
                     let mut tx_num = 1;
@@ -98,10 +96,8 @@ pub fn evolution_pond() {
     let mut pond : Vec<Creature> = Vec::new();
 
     /* Initialize the pond with already hatched and evaluated creatures */
-    let mut count = 0;
-    for critter in breed_rx.iter() {
+    for (count, critter) in breed_rx.iter().enumerate() {
         pond.push(critter);
-        count += 1;
         //println!("count {}",count);
         if pond.len() > *SELECTION_WINDOW_SIZE {
             pond.shuffle(&mut rng);
