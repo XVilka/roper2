@@ -260,9 +260,11 @@ impl<'a> Engine<'a> {
                     };
                     let mut bytecode: Vec<u8> = Vec::with_capacity(1);
                     if uc.mem_read(pc, &mut bytecode).is_ok() {
-                        if bytecode[0] == X86_RET {
-                            /* ret on x86 is C3 */
-                            callback(uc, addr, size)
+                        if !bytecode.is_empty() {
+                            if bytecode[0] == X86_RET {
+                                /* ret on x86 is C3 */
+                                callback(uc, addr, size)
+                            }
                         }
                     }
                 };
@@ -273,8 +275,10 @@ impl<'a> Engine<'a> {
                     let pc = addr; //read_pc(uc).unwrap();
                     let mut bytecode: Vec<u8> = Vec::with_capacity(4);
                     if uc.mem_read(pc, &mut bytecode).is_ok() {
-                        if arm_ret(&bytecode) {
-                            callback(uc, addr, size)
+                        if !bytecode.is_empty() {
+                            if arm_ret(&bytecode) {
+                                callback(uc, addr, size)
+                            }
                         }
                     } else {
                         panic!("Failed to read instruction")
@@ -287,8 +291,10 @@ impl<'a> Engine<'a> {
                     let pc = addr; //read_pc(uc).unwrap();
                     let mut bytecode: Vec<u8> = Vec::with_capacity(2);
                     if uc.mem_read(pc, &mut bytecode).is_ok() {
-                        if thumb_ret(&bytecode) {
-                            callback(uc, addr, size)
+                        if !bytecode.is_empty() {
+                            if thumb_ret(&bytecode) {
+                                callback(uc, addr, size)
+                            }
                         }
                     } else {
                         panic!("Failed to read instruction")
@@ -315,8 +321,10 @@ impl<'a> Engine<'a> {
                     let mut bytecode: Vec<u8> = Vec::with_capacity(size as usize);
                     if uc.mem_read(addr, &mut bytecode).is_ok() {
                         /* TODO Better indirect jump detector! */
-                        if bytecode[0] == 0xFF {
-                            callback(uc, addr, size)
+                        if !bytecode.is_empty() {
+                            if bytecode[0] == 0xFF {
+                                callback(uc, addr, size)
+                            }
                         }
                     } else {
                         println!("Failed to read instruction! {:?}", bytecode)
