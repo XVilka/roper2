@@ -1,10 +1,10 @@
-use std::thread::{spawn, JoinHandle};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, RwLock};
+use std::thread::{spawn, JoinHandle};
 
-use gen::*;
-use par::statics::*;
-use circbuf::CircBuf;
+use crate::circbuf::CircBuf;
+use crate::gen::*;
+use crate::par::statics::*;
 
 // use ketos::{Interpreter,FromValueRef};
 
@@ -47,7 +47,7 @@ pub fn spawn_evaluator(
         let mut slave_idx = 0;
         let sliding_window = circbuf.clone();
         for creature in into_eval_rx {
-            let mut creature: Creature = creature;
+            let creature: Creature = creature;
             //eval_fitness(&mut creature, &sliding_window.read().unwrap());
             let &(ref slave_tx, _) = &carousel[slave_idx];
             slave_idx = (slave_idx + 1) % carousel.len();
@@ -56,7 +56,7 @@ pub fn spawn_evaluator(
             slave_tx.send(creature).unwrap();
         }
 
-        while carousel.len() > 0 {
+        while !carousel.is_empty() {
             if let Some((slave_tx, h)) = carousel.pop() {
                 drop(slave_tx);
                 h.join().unwrap();
@@ -71,13 +71,13 @@ fn slave_eval(
     eval_rx: Receiver<Creature>,
     eval_tx: SyncSender<Creature>,
     _sliding_window: Arc<RwLock<CircBuf>>,
-) -> () {
+) {
     /*
-    let interp = Interpreter::new();    
+    let interp = Interpreter::new();
     interp.scope().register_struct_value::<Creature>();
     interp.scope().register_struct_value::<Pod>();
     interp.run_code(r#"
-    ;; Some fitness evaluation script here.    
+    ;; Some fitness evaluation script here.
     (define (eval-fitness creature)
         0.5)
     "#, None).unwrap();
@@ -91,13 +91,12 @@ fn slave_eval(
         //let f = interp.call("eval-fitness",
         //                    (creature).into()).unwrap();
         //let fit = f32::from_value_ref(&f).unwrap();
-        creature.fitness =
-            Some(vec![
-                /* Here's where you list the fitness scores */
-                creature.phenome.ff_mean_uniq_retcount(),
-                creature.phenome.ff_mean_retcount(),
-                creature.phenome.ff_mean_writecount(),
-            ]);
+        creature.fitness = Some(vec![
+            /* Here's where you list the fitness scores */
+            creature.phenome.ff_mean_uniq_retcount(),
+            creature.phenome.ff_mean_retcount(),
+            creature.phenome.ff_mean_writecount(),
+        ]);
         assert!(creature.has_hatched());
         eval_tx.send(creature).unwrap();
     }

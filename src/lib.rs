@@ -12,7 +12,7 @@ extern crate lazy_static;
 // #[macro_use]
 //extern crate ketos_derive;
 
-extern crate unicorn;
+use unicorn;
 
 pub mod emu;
 

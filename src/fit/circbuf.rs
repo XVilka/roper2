@@ -1,5 +1,5 @@
+use crate::gen::Creature;
 use std::collections::VecDeque;
-use gen::Creature;
 
 pub struct CircBuf {
     pub buf: VecDeque<Creature>,
@@ -10,7 +10,7 @@ impl CircBuf {
     pub fn new(capacity: usize) -> Self {
         CircBuf {
             buf: VecDeque::with_capacity(capacity),
-            capacity: capacity,
+            capacity,
         }
     }
 

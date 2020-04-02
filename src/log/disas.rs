@@ -1,48 +1,59 @@
-extern crate capstone;
-extern crate unicorn;
+use capstone::prelude::*;
+use capstone::Capstone;
 
-use self::capstone::prelude::*;
-use self::capstone::Capstone;
+use crate::emu::loader;
+use crate::emu::loader::{Arch, Mode};
+use crate::par::statics::ARCHITECTURE;
 
-use emu::loader;
-use emu::loader::{Arch, Mode};
-use par::statics::ARCHITECTURE;
-use std::sync::Mutex;
-
-lazy_static! {
-    pub static ref X86_DISASSEMBLER: Mutex<Capstone>
-        = Mutex::new(Capstone::new()
-                              .x86()
-                              .mode(arch::x86::ArchMode::Mode64)
-                              .build()
-                              .expect("Failed to initialize X86_DISASSEMBLER"));
+#[inline]
+pub fn x86_disassembler() -> &'static Capstone {
+    thread_local! {
+        pub static X86_DISASSEMBLER: &'static Capstone = Box::leak(Box::new(
+            Capstone::new()
+                    .x86()
+                    .mode(arch::x86::ArchMode::Mode64)
+                    .build()
+                    .expect("Failed to initialize X86_DISASSEMBLER")
+        ));
+    }
+    X86_DISASSEMBLER.with(|&x| x) // Copy the 'static Capstone
 }
 
-lazy_static! {
-    pub static ref ARM_DISASSEMBLER: Mutex<Capstone>
-        = Mutex::new(Capstone::new()
-                              .arm()
-                              .mode(arch::arm::ArchMode::Arm)
-                              .build()
-                              .expect("Failed to initialize ARM_DISASSEMBLER"));
+#[inline]
+pub fn arm_disassembler() -> &'static Capstone {
+    thread_local! {
+        pub static ARM_DISASSEMBLER: &'static Capstone = Box::leak(Box::new(
+            Capstone::new()
+                    .arm()
+                    .mode(arch::arm::ArchMode::Arm)
+                    .build()
+                    .expect("Failed to initialize ARM_DISASSEMBLER")
+        ));
+    }
+    ARM_DISASSEMBLER.with(|&x| x) // Copy the 'static Capstone
 }
 
-lazy_static! {
-    pub static ref THUMB_DISASSEMBLER: Mutex<Capstone>
-        = Mutex::new(Capstone::new()
-                              .arm()
-                              .mode(arch::arm::ArchMode::Thumb)
-                              .build()
-                              .expect("Failed to initialize THUMB_DISASSEMBLER"));
+#[inline]
+pub fn thumb_disassembler() -> &'static Capstone {
+    thread_local! {
+        pub static THUMB_DISASSEMBLER: &'static Capstone = Box::leak(Box::new(
+            Capstone::new()
+                    .arm()
+                    .mode(arch::arm::ArchMode::Thumb)
+                    .build()
+                    .expect("Failed to initialize THUMB_DISASSEMBLER")
+        ));
+    }
+    THUMB_DISASSEMBLER.with(|&x| x) // Copy the 'static Capstone
 }
 
-pub fn disas(insts: &Vec<u8>, mode: Mode, num_insts: usize) -> String {
+pub fn disas(insts: &[u8], mode: Mode, num_insts: usize) -> String {
     let arch = ARCHITECTURE.with_mode(mode);
 
     let cs = match arch {
-        Arch::X86(Mode::Bits64) => X86_DISASSEMBLER.lock().unwrap(),
-        Arch::Arm(Mode::Arm) => ARM_DISASSEMBLER.lock().unwrap(),
-        Arch::Arm(Mode::Thumb) => THUMB_DISASSEMBLER.lock().unwrap(),
+        Arch::X86(Mode::Bits64) => x86_disassembler(),
+        Arch::Arm(Mode::Arm) => arm_disassembler(),
+        Arch::Arm(Mode::Thumb) => thumb_disassembler(),
         _ => panic!("not yet implemented"),
     };
     if let Ok(dis) = cs.disasm_count(insts, 0, num_insts) {
@@ -66,7 +77,7 @@ pub fn disas(insts: &Vec<u8>, mode: Mode, num_insts: usize) -> String {
 }
 /* There seem to have been some major API changes between capstone 0.0.4 and
  * the latest version. There may or may not be a reason to try to get this
- * disas stuff up to date. 
+ * disas stuff up to date.
  *
 pub fn disas (insts: &Vec<u8>, mode: Mode, num_insts: usize) -> String {
     let cs_mode = match mode {
@@ -84,7 +95,7 @@ pub fn disas (insts: &Vec<u8>, mode: Mode, num_insts: usize) -> String {
         _ => panic!("unhandled arch"),
     };
     let cs: Capstone = Capstone::new(cs_arch, cs_mode).unwrap();
-    let dis: Vec<String> = 
+    let dis: Vec<String> =
         match cs.disasm(insts, 0, 0) {
             Some(s) => s.iter()
                         .map(|x| cs_insn_to_string(&x))

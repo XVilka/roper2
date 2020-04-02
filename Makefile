@@ -1,10 +1,8 @@
 
 all: target/debug/roper
 
-
 unicorn/libunicorn.so.1:
-	cd unicorn
-	./make.sh
+	(cd unicorn && ./make.sh)
 
 target/debug/roper: unicorn/libunicorn.so.1
 	cargo build

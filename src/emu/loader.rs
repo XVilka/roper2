@@ -1,371 +1,367 @@
-extern crate capstone;
-extern crate goblin;
-extern crate rand;
-extern crate unicorn;
-
-use std::fmt::{Display, Formatter};
+use crate::par::statics::*;
+use crate::unicorn::*;
+use goblin::{elf, Object};
 use std::fmt;
-use self::goblin::{elf, Object};
-use self::unicorn::*;
-use par::statics::*;
+use std::fmt::{Display, Formatter};
 
-  pub struct Engine {
-      pub uc: Box<unicorn::Unicorn>,
-      pub arch: Arch,
-      pub regids: Vec<i32>,
-      mem: MemImage,
-      writeable_bak: Option<MemImage>,
-      default_uc_mode: unicorn::Mode,
-      saved_context: unicorn::Context,
-  }
+pub struct Engine<'a> {
+    pub uc: Box<unicorn::Unicorn<'a>>,
+    pub arch: Arch,
+    pub regids: Vec<i32>,
+    mem: MemImage<'a>,
+    writeable_bak: Option<MemImage<'a>>,
+    default_uc_mode: unicorn::Mode,
+    saved_context: unicorn::Context,
+}
 
-  impl Engine {
-      pub fn new(arch: Arch) -> Self {
-          let (_uc_arch, uc_mode) = arch.as_uc();
-          let mut mem: MemImage = mem_image_deep_copy();
-          let emu = init_emulator(arch, &mut mem, false).unwrap();
-          let regids = match arch {
-              Arch::Arm(_) => regids(&ARM_REGISTERS),
-              Arch::Mips(_) => regids(&MIPS_REGISTERS),
-              Arch::X86(Mode::Bits64) => regids(&X86_64_REGISTERS),
-              _ => unreachable!("Not implemented"),
-          };
-          let mut emu = Engine {
-              uc: emu,
-              arch: arch,
-              mem: mem,
-              regids: regids,
-              default_uc_mode: uc_mode,
-              saved_context: unicorn::Context::new(),
-              writeable_bak: None,
-          };
-          emu.save_state().unwrap();
-          emu
-      }
+impl<'a> Engine<'a> {
+    pub fn new(arch: Arch) -> Self {
+        let (_uc_arch, uc_mode) = arch.as_uc();
+        let (emu, mem) = init_emulator(arch, false).unwrap();
+        let regids = match arch {
+            Arch::Arm(_) => regids(&ARM_REGISTERS),
+            Arch::Mips(_) => regids(&MIPS_REGISTERS),
+            Arch::X86(Mode::Bits64) => regids(&X86_64_REGISTERS),
+            _ => unreachable!("Not implemented"),
+        };
+        let mut emu = Engine {
+            uc: emu,
+            arch,
+            mem,
+            regids,
+            default_uc_mode: uc_mode,
+            saved_context: unicorn::Context::new(),
+            writeable_bak: None,
+        };
+        emu.save_state().unwrap();
+        emu
+    }
 
-      /// Saves the register context.
-      pub fn save_context(&mut self) -> Result<(), unicorn::Error> {
-          match self.uc.context_save() {
-              Ok(c) => {
-                  self.saved_context = c;
-                  Ok(())
-              }
-              Err(e) => Err(e),
-          }
-      }
-
-      /// Saves both the register context and the state of writeable memory.
-      pub fn save_state(&mut self) -> Result<(), unicorn::Error> {
-          self.writeable_bak = Some(self.writeable_memory());
-          self.save_context()
-      }
-
-      /// Restores the register context and the state of writeable memory to
-      /// their state at the last save_state() event.
-      pub fn restore_state(&mut self) -> Result<(), unicorn::Error> {
-          for seg in self.writeable_bak.as_ref().unwrap() {
-              self.uc.mem_write(seg.aligned_start(), &seg.data)?;
-          }
-          self.restore_context()
-      }
-
-      /// Restores the register context.
-      pub fn restore_context(&mut self) -> Result<(), unicorn::Error> {
-          self.uc.context_restore(&self.saved_context)
-      }
-
-      /* method for the Engine trait */
-        pub fn hard_reset(&mut self) -> () {
-            self.save_state().unwrap();
-            let (uc_arch, uc_mode) = self.arch.as_uc();
-            let uc = unicorn::Unicorn::new(uc_arch, uc_mode).unwrap();
-            for seg in &self.mem {
-                uc.mem_map(seg.aligned_start(), seg.aligned_size(), seg.perm)
-                    .unwrap();
-                uc.mem_write(seg.aligned_start(), &seg.data).unwrap();
+    /// Saves the register context.
+    pub fn save_context(&mut self) -> Result<(), unicorn::Error> {
+        match self.uc.context_save() {
+            Ok(c) => {
+                self.saved_context = c;
+                Ok(())
             }
-            self.uc = uc;
-            self.restore_state().unwrap(); /* i want to see these crashes */
+            Err(e) => Err(e),
         }
+    }
 
-      pub fn mem_write(&mut self, addr: u64, data: &Vec<u8>) -> Result<(), unicorn::Error> {
-          self.uc.mem_write(addr, data)
-      }
+    /// Saves both the register context and the state of writeable memory.
+    pub fn save_state(&mut self) -> Result<(), unicorn::Error> {
+        self.writeable_bak = Some(self.writeable_memory());
+        self.save_context()
+    }
 
-      pub fn uc_mode(&self) -> unicorn::Mode {
-          let q = self.uc.query(unicorn::Query::MODE);
-          match q {
-              Ok(n) => umode_from_usize(n),
-              Err(_) => self.default_uc_mode,
-          }
-      }
+    /// Restores the register context and the state of writeable memory to
+    /// their state at the last save_state() event.
+    pub fn restore_state(&mut self) -> Result<(), unicorn::Error> {
+        for seg in self.writeable_bak.as_ref().unwrap() {
+            self.uc.mem_write(seg.aligned_start(), &seg.data)?;
+        }
+        self.restore_context()
+    }
 
-      pub fn mode(&self) -> Mode {
-          match self.uc_mode() {
-              unicorn::Mode::LITTLE_ENDIAN => Mode::Arm,
-              unicorn::Mode::THUMB => Mode::Thumb,
-              unicorn::Mode::MODE_64 => Mode::Bits64,
-              unicorn::Mode::MODE_32 => Mode::Bits32,
-              unicorn::Mode::MODE_16 => Mode::Bits16,
-              _ => panic!("***** UNIMPLEMENTED! ****"),
-          }
-      }
+    /// Restores the register context.
+    pub fn restore_context(&mut self) -> Result<(), unicorn::Error> {
+        self.uc.context_restore(&self.saved_context)
+    }
 
-      pub fn risc_width(&self) -> usize {
-          if self.uc_mode() == unicorn::Mode::THUMB {
-              2
-          } else {
-              4
-          }
-      }
+    /* method for the Engine trait */
+    pub fn hard_reset(&mut self) {
+        self.save_state().unwrap();
+        let (uc_arch, uc_mode) = self.arch.as_uc();
+        let uc = unicorn::Unicorn::new(uc_arch, uc_mode).unwrap();
+        for seg in &self.mem {
+            uc.mem_map(seg.aligned_start(), seg.aligned_size(), seg.perm)
+                .unwrap();
+            uc.mem_write(seg.aligned_start(), &seg.data).unwrap();
+        }
+        self.uc = uc;
+        self.restore_state().unwrap() /* i want to see these crashes */
+    }
 
-      pub fn find_stack(&self) -> (u64, usize) {
-          let regions = self.uc.mem_regions().unwrap();
-          let mut bottom: Option<u64> = None;
-          let mut stack: Option<MemRegion> = None;
-          for region in regions.iter() {
-              if region.perms.intersects(PROT_READ | PROT_WRITE)
-                  && region.begin >= bottom.unwrap_or(0)
-              {
-                  bottom = Some(region.begin);
-                  stack = Some(region.clone());
-              };
-          }
-          let stack = stack.expect(&format!(
-              "[!] Could not find stack bottom! Regions: {:?}",
-              regions
-          ));
-          (stack.begin, (stack.end - stack.begin) as usize)
-      }
+    pub fn mem_write(&mut self, addr: u64, data: &[u8]) -> Result<(), unicorn::Error> {
+        self.uc.mem_write(addr, data)
+    }
 
-      pub fn set_sp(&mut self, val: u64) -> Result<(), Error> {
-          match self.arch {
-              Arch::Arm(_) => {
-                  let sp = RegisterARM::SP as i32;
-                  self.uc.reg_write(sp, val)
-              }
-              Arch::Mips(_) => {
-                  let sp = RegisterMIPS::SP as i32;
-                  self.uc.reg_write(sp, val)
-              }
-              Arch::X86(Mode::Bits64) => {
-                  let sp = RegisterX86::RSP as i32;
-                  self.uc.reg_write(sp, val)
-              }
-              _ => unreachable!("Not implemented"),
-          }
-      }
+    pub fn uc_mode(&self) -> unicorn::Mode {
+        let q = self.uc.query(unicorn::Query::MODE);
+        match q {
+            Ok(n) => umode_from_usize(n),
+            Err(_) => self.default_uc_mode,
+        }
+    }
 
-      pub fn writeable_memory(&self) -> MemImage {
-          let mut wmem = Vec::new();
-          for rgn in self.uc
-              .mem_regions()
-              .unwrap()
-              .iter()
-              .filter(|r| r.perms.intersects(PROT_WRITE))
-          {
-              let data: Vec<u8> = self.uc
-                  .mem_read(rgn.begin, (rgn.end - rgn.begin) as usize)
-                  .unwrap();
-              wmem.push(Seg {
-                  addr: rgn.begin,
-                  perm: rgn.perms,
-                  memsz: (rgn.end - rgn.begin) as usize,
-                  data: data,
-                  segtype: SegType::Load,
-              });
-          }
-          wmem
-      }
+    pub fn mode(&self) -> Mode {
+        match self.uc_mode() {
+            unicorn::Mode::LITTLE_ENDIAN => Mode::Arm,
+            unicorn::Mode::THUMB => Mode::Thumb,
+            unicorn::Mode::MODE_64 => Mode::Bits64,
+            unicorn::Mode::MODE_32 => Mode::Bits32,
+            unicorn::Mode::MODE_16 => Mode::Bits16,
+            _ => panic!("***** UNIMPLEMENTED! ****"),
+        }
+    }
 
-      pub fn start(
-          &mut self,
-          begin: u64,
-          until: u64,
-          timeout: u64,
-          count: usize,
-      ) -> Result<(), Error> {
-          self.uc.emu_start(begin, until, timeout, count)
-      }
+    pub fn risc_width(&self) -> usize {
+        if self.uc_mode() == unicorn::Mode::THUMB {
+            2
+        } else {
+            4
+        }
+    }
 
-      pub fn remove_hook(&mut self, uc_hook: unicorn::uc_hook) -> Result<(), Error> {
-          self.uc.remove_hook(uc_hook)
-      }
+    pub fn find_stack(&self) -> (u64, usize) {
+        let regions = self.uc.mem_regions().unwrap();
+        let mut bottom: Option<u64> = None;
+        let mut stack: Option<MemRegion> = None;
+        for region in regions.iter() {
+            if region.perms.intersects(PROT_READ | PROT_WRITE)
+                && region.begin >= bottom.unwrap_or(0)
+            {
+                bottom = Some(region.begin);
+                stack = Some(region.clone());
+            };
+        }
+        let stack = stack
+            .unwrap_or_else(|| panic!("[!] Could not find stack bottom! Regions: {:?}", regions));
+        (stack.begin, (stack.end - stack.begin) as usize)
+    }
 
-      pub fn add_code_hook<F>(
-          &mut self,
-          hooktype: unicorn::CodeHookType,
-          start_addr: u64,
-          stop_addr: u64,
-          callback: F,
-      ) -> Result<unicorn::uc_hook, Error>
-      where
-          F: Fn(&Unicorn, u64, u32) -> () + 'static,
-      {
-          self.uc
-              .add_code_hook(hooktype, start_addr, stop_addr, callback)
-      }
+    pub fn set_sp(&mut self, val: u64) -> Result<(), Error> {
+        match self.arch {
+            Arch::Arm(_) => {
+                let sp = RegisterARM::SP as i32;
+                self.uc.reg_write(sp, val)
+            }
+            Arch::Mips(_) => {
+                let sp = RegisterMIPS::SP as i32;
+                self.uc.reg_write(sp, val)
+            }
+            Arch::X86(Mode::Bits64) => {
+                let sp = RegisterX86::RSP as i32;
+                self.uc.reg_write(sp, val)
+            }
+            _ => unreachable!("Not implemented"),
+        }
+    }
 
-      pub fn read_general_registers(&self) -> Result<Vec<u64>, Error> {
-          Ok(self.regids
-              .iter()
-              .map(|&x| self.uc.reg_read(x).expect("Error reading registers"))
-              .collect::<Vec<u64>>())
-      }
+    pub fn writeable_memory(&self) -> MemImage<'a> {
+        let mut wmem = Vec::new();
+        for rgn in self
+            .uc
+            .mem_regions()
+            .unwrap()
+            .iter()
+            .filter(|r| r.perms.intersects(PROT_WRITE))
+        {
+            let mut data: Vec<u8> = Vec::with_capacity((rgn.end - rgn.begin) as usize);
+            self.uc.mem_read(rgn.begin, &mut data).unwrap();
+            wmem.push(Seg {
+                addr: rgn.begin,
+                perm: rgn.perms,
+                memsz: (rgn.end - rgn.begin) as usize,
+                data,
+                segtype: SegType::Load,
+            });
+        }
+        wmem
+    }
 
-      /// Limitation: Only returns the bounds of the largest executable
-      /// segment.
-      pub fn exec_mem_range(&self) -> (Option<u64>, Option<u64>) {
-          let regions = self.uc.mem_regions().unwrap();
-          let mut exec_start = None;
-          let mut exec_stop = None;
-          for region in regions {
-              if !region.perms.intersects(PROT_EXEC) {
-                  continue;
-              }
-              if exec_start == None || region.begin < exec_start.unwrap() {
-                  exec_start = Some(region.begin)
-              };
-              if exec_stop == None || region.end > exec_stop.unwrap() {
-                  exec_stop = Some(region.end)
-              };
-          }
-          (exec_start, exec_stop)
-      }
+    pub fn start(
+        &mut self,
+        begin: u64,
+        until: u64,
+        timeout: u64,
+        count: usize,
+    ) -> Result<(), Error> {
+        self.uc.emu_start(begin, until, timeout, count)
+    }
 
-      pub fn hook_exec_mem<F>(&mut self, callback: F) -> Result<unicorn::uc_hook, Error>
-      where
-          F: Fn(&Unicorn, u64, u32) -> () + 'static,
-      {
-          let (exec_start, exec_stop) = self.exec_mem_range();
-          if exec_start == None || exec_stop == None {
-              Err(unicorn::Error::ARG)
-          } else {
-              //println!("> exec_start: {:08x}, exec_stop: {:08x}", exec_start.unwrap(), exec_stop.unwrap());
-              self.uc.add_code_hook(
-                  unicorn::CodeHookType::CODE,
-                  exec_start.unwrap(),
-                  exec_stop.unwrap(),
-                  callback,
-              )
-          }
-      }
+    pub fn remove_hook(&mut self, uc_hook: unicorn::uc_hook) -> Result<(), Error> {
+        self.uc.remove_hook(uc_hook)
+    }
 
-      pub fn hook_rets<F>(&mut self, callback: F) -> Result<unicorn::uc_hook, unicorn::Error>
-      where
-          F: Fn(&Unicorn, u64, u32) -> () + 'static,
-      {
-          //let (exec_start, exec_stop) = self.exec_mem_range();
-          let arch = ARCHITECTURE.with_mode(self.mode());
-          match arch {
-              Arch::X86(_) => {
-                  /* KLUDGE -- not sure why instruction hooking won't work here. */
-                  let _callback = move |uc: &Unicorn, addr, size| {
-                      let pc = addr;
-                      if size != 1 {
-                          return;
-                      };
-                      let bytecode = uc.mem_read(pc, 1); /* ret on x86 is C3 */
-                      match bytecode {
-                          Ok(v) => if v[0] == X86_RET {
-                              callback(uc, addr, size)
-                          } else {
-                              ()
-                          },
-                          _ => (),
-                      }
-                  };
-                  self.hook_exec_mem(_callback)
-              }
-              Arch::Arm(Mode::Arm) => {
-                  let _callback = move |uc: &Unicorn, addr, size| {
-                      let pc = addr; //read_pc(uc).unwrap();
-                      let bytecode = uc.mem_read(pc, 4);
-                      match bytecode {
-                          Ok(v) => if arm_ret(&v) {
-                              callback(uc, addr, size)
-                          } else {
-                              ()
-                          },
-                          Err(_) => panic!("Failed to read instruction"),
-                      }
-                  };
-                  self.hook_exec_mem(_callback)
-              }
-              Arch::Arm(Mode::Thumb) => {
-                  let _callback = move |uc: &Unicorn, addr, size| {
-                      let pc = addr; //read_pc(uc).unwrap();
-                      let bytecode = uc.mem_read(pc, 2);
-                      match bytecode {
-                          Ok(v) => if thumb_ret(&v) {
-                              callback(uc, addr, size)
-                          } else {
-                              ()
-                          },
-                          Err(_) => panic!("Failed to read instruction"),
-                      }
-                  };
-                  self.hook_exec_mem(_callback)
-              }
-              _ => panic!("Unimplemented. Will need to tinker with unicorn-rs a bit."),
-          }
-      }
+    pub fn add_code_hook<F>(
+        &mut self,
+        hooktype: unicorn::CodeHookType,
+        start_addr: u64,
+        stop_addr: u64,
+        callback: F,
+    ) -> Result<unicorn::uc_hook, Error>
+    where
+        F: Fn(&Unicorn, u64, u32) -> () + 'static,
+    {
+        self.uc
+            .add_code_hook(hooktype, start_addr, stop_addr, callback)
+    }
 
-      pub fn hook_indirect_jumps<F>(
-          &mut self,
-          callback: F,
-      ) -> Result<unicorn::uc_hook, unicorn::Error>
-      where
-          F: Fn(&Unicorn, u64, u32) -> () + 'static,
-      {
-          let arch = ARCHITECTURE.with_mode(self.mode());
-          match arch {
-              Arch::X86(_) => {
-                  let _callback = move |uc: &Unicorn, addr: u64, size: u32| {
-                      let size = u32::min(size, 15);
-                      let bytecode = uc.mem_read(addr, size as usize);
-                      match bytecode {
-                          /* TODO Better indirect jump detector! */
-                          Ok(v) => if v[0] == 0xFF {
-                              callback(uc, addr, size)
-                          } else {
-                              ()
-                          },
-                          Err(_) => println!("Failed to read instruction! {:?}", bytecode),
-                      }
-                  };
-                  self.hook_exec_mem(_callback)
-              }
-              _ => panic!("hook_jumps not yet implemented for this architecture"),
-          }
-      }
+    pub fn read_general_registers(&self) -> Result<Vec<u64>, Error> {
+        Ok(self
+            .regids
+            .iter()
+            .map(|&x| self.uc.reg_read(x).expect("Error reading registers"))
+            .collect::<Vec<u64>>())
+    }
 
-      pub fn hook_writeable_mem<F>(&mut self, callback: F) -> Result<unicorn::uc_hook, Error>
-      where
-          F: Fn(&Unicorn, unicorn::MemType, u64, usize, i64) -> bool + 'static,
-      {
-          let writeable = self.writeable_memory();
-          let mut begin = None;
-          let mut end = None;
-          for seg in &writeable {
-              let b = seg.aligned_start();
-              let e = seg.aligned_end();
-              if begin == None || b < begin.unwrap() {
-                  begin = Some(b)
-              };
-              if end == None || e > end.unwrap() {
-                  end = Some(e)
-              };
-          }
-          assert!(begin != None && end != None);
-          self.uc.add_mem_hook(
-              unicorn::MemHookType::MEM_WRITE,
-              begin.unwrap(),
-              end.unwrap(),
-              callback,
-          )
-      }
-  }
+    /// Limitation: Only returns the bounds of the largest executable
+    /// segment.
+    pub fn exec_mem_range(&self) -> (Option<u64>, Option<u64>) {
+        let regions = self.uc.mem_regions().unwrap();
+        let mut exec_start = None;
+        let mut exec_stop = None;
+        for region in regions {
+            if !region.perms.intersects(PROT_EXEC) {
+                continue;
+            }
+            if exec_start == None || region.begin < exec_start.unwrap() {
+                exec_start = Some(region.begin)
+            };
+            if exec_stop == None || region.end > exec_stop.unwrap() {
+                exec_stop = Some(region.end)
+            };
+        }
+        (exec_start, exec_stop)
+    }
+
+    pub fn hook_exec_mem<F>(&mut self, callback: F) -> Result<unicorn::uc_hook, Error>
+    where
+        F: Fn(&Unicorn, u64, u32) -> () + 'static,
+    {
+        let (exec_start, exec_stop) = self.exec_mem_range();
+        if exec_start == None || exec_stop == None {
+            Err(unicorn::Error::ARG)
+        } else {
+            //println!("> exec_start: {:08x}, exec_stop: {:08x}", exec_start.unwrap(), exec_stop.unwrap());
+            self.uc.add_code_hook(
+                unicorn::CodeHookType::CODE,
+                exec_start.unwrap(),
+                exec_stop.unwrap(),
+                callback,
+            )
+        }
+    }
+
+    pub fn hook_rets<F>(&mut self, callback: F) -> Result<unicorn::uc_hook, unicorn::Error>
+    where
+        F: Fn(&Unicorn, u64, u32) -> () + 'static,
+    {
+        //let (exec_start, exec_stop) = self.exec_mem_range();
+        let arch = ARCHITECTURE.with_mode(self.mode());
+        match arch {
+            Arch::X86(_) => {
+                /* KLUDGE -- not sure why instruction hooking won't work here. */
+                let _callback = move |uc: &Unicorn, addr, size| {
+                    let pc = addr;
+                    if size != 1 {
+                        return;
+                    };
+                    let mut bytecode: Vec<u8> = Vec::with_capacity(1);
+                    if uc.mem_read(pc, &mut bytecode).is_ok() {
+                        if !bytecode.is_empty() {
+                            if bytecode[0] == X86_RET {
+                                /* ret on x86 is C3 */
+                                callback(uc, addr, size)
+                            }
+                        }
+                    }
+                };
+                self.hook_exec_mem(_callback)
+            }
+            Arch::Arm(Mode::Arm) => {
+                let _callback = move |uc: &Unicorn, addr, size| {
+                    let pc = addr; //read_pc(uc).unwrap();
+                    let mut bytecode: Vec<u8> = Vec::with_capacity(4);
+                    if uc.mem_read(pc, &mut bytecode).is_ok() {
+                        if !bytecode.is_empty() {
+                            if arm_ret(&bytecode) {
+                                callback(uc, addr, size)
+                            }
+                        }
+                    } else {
+                        panic!("Failed to read instruction")
+                    }
+                };
+                self.hook_exec_mem(_callback)
+            }
+            Arch::Arm(Mode::Thumb) => {
+                let _callback = move |uc: &Unicorn, addr, size| {
+                    let pc = addr; //read_pc(uc).unwrap();
+                    let mut bytecode: Vec<u8> = Vec::with_capacity(2);
+                    if uc.mem_read(pc, &mut bytecode).is_ok() {
+                        if !bytecode.is_empty() {
+                            if thumb_ret(&bytecode) {
+                                callback(uc, addr, size)
+                            }
+                        }
+                    } else {
+                        panic!("Failed to read instruction")
+                    }
+                };
+                self.hook_exec_mem(_callback)
+            }
+            _ => panic!("Unimplemented. Will need to tinker with unicorn-rs a bit."),
+        }
+    }
+
+    pub fn hook_indirect_jumps<F>(
+        &mut self,
+        callback: F,
+    ) -> Result<unicorn::uc_hook, unicorn::Error>
+    where
+        F: Fn(&Unicorn, u64, u32) -> () + 'static,
+    {
+        let arch = ARCHITECTURE.with_mode(self.mode());
+        match arch {
+            Arch::X86(_) => {
+                let _callback = move |uc: &Unicorn, addr: u64, size: u32| {
+                    let size = u32::min(size, 15);
+                    let mut bytecode: Vec<u8> = Vec::with_capacity(size as usize);
+                    if uc.mem_read(addr, &mut bytecode).is_ok() {
+                        /* TODO Better indirect jump detector! */
+                        if !bytecode.is_empty() {
+                            if bytecode[0] == 0xFF {
+                                callback(uc, addr, size)
+                            }
+                        }
+                    } else {
+                        println!("Failed to read instruction! {:?}", bytecode)
+                    }
+                };
+                self.hook_exec_mem(_callback)
+            }
+            _ => panic!("hook_jumps not yet implemented for this architecture"),
+        }
+    }
+
+    pub fn hook_writeable_mem<F>(&mut self, callback: F) -> Result<unicorn::uc_hook, Error>
+    where
+        F: Fn(&Unicorn, unicorn::MemType, u64, usize, i64) -> bool + 'static,
+    {
+        let writeable = self.writeable_memory();
+        let mut begin = None;
+        let mut end = None;
+        for seg in &writeable {
+            let b = seg.aligned_start();
+            let e = seg.aligned_end();
+            if begin == None || b < begin.unwrap() {
+                begin = Some(b)
+            };
+            if end == None || e > end.unwrap() {
+                end = Some(e)
+            };
+        }
+        assert!(begin != None && end != None);
+        self.uc.add_mem_hook(
+            unicorn::MemHookType::MEM_WRITE,
+            begin.unwrap(),
+            end.unwrap(),
+            callback,
+        )
+    }
+}
 
 /// Returns the regid for the program counter, on the
 /// current ARCHITECTURE (wrt static variable)
@@ -421,7 +417,7 @@ where
     regs.iter().map(|x| x.to_i32()).collect::<Vec<i32>>()
 }
 
-pub fn mem_image_deep_copy() -> MemImage {
+pub fn mem_image_deep_copy<'a>() -> MemImage<'a> {
     let mut mi = Vec::new();
     for seg in MEM_IMAGE.to_vec() {
         mi.push(seg.deep_copy())
@@ -433,7 +429,7 @@ fn mem_image_to_mem_table() -> Vec<(u64, usize, unicorn::Protection, *mut u8)> {
     let mut table = Vec::new();
     for seg in &*MEM_IMAGE {
         let mut data = seg.data.clone();
-        let mut data_ptr = data.as_mut_ptr();
+        let data_ptr = data.as_mut_ptr();
         table.push((seg.aligned_start(), seg.aligned_size(), seg.perm, data_ptr));
     }
     table
@@ -445,12 +441,14 @@ fn uc_mem_table(emu: &Unicorn) -> Vec<(u64, usize, unicorn::Protection, Vec<u8>)
         let begin = region.begin;
         let size = (region.end - region.begin) as usize + 1;
         let perms = region.perms;
-        let mut data = emu.mem_read(begin, size).unwrap();
-        let mut ptr = data;
-        table.push((begin, size, perms, ptr));
+        let mut data: Vec<u8> = Vec::with_capacity(size);
+        if emu.mem_read(begin, &mut data).is_ok() {
+            let ptr = data;
+            table.push((begin, size, perms, ptr))
+        }
     }
     table
-}/* from raw Unicorn instance. Useful inside callbacks, for disassembling */
+} /* from raw Unicorn instance. Useful inside callbacks, for disassembling */
 pub fn get_mode(uc: &Unicorn) -> Mode {
     /* TODO keep a global static architecture variable, for reference
      * in situations like these. for now, we're just assuming ARM, but
@@ -469,16 +467,17 @@ pub fn get_mode(uc: &Unicorn) -> Mode {
     }
 }
 
-pub fn init_emulator(
+pub fn init_emulator<'a>(
     archmode: Arch,
-    mem: &mut MemImage,
     unsafely: bool,
-) -> Result<Box<Unicorn>, unicorn::Error> {
+) -> Result<(Box<Unicorn<'a>>, MemImage<'a>), unicorn::Error> {
     let (arch, mode) = archmode.as_uc();
 
     let uc = Unicorn::new(arch, mode)?;
 
-    for seg in mem {
+    let mut mem: MemImage = mem_image_deep_copy();
+
+    for seg in &mut mem {
         if unsafely {
             unsafe {
                 uc.mem_map_ptr(
@@ -490,10 +489,10 @@ pub fn init_emulator(
             }?;
         } else {
             uc.mem_map(seg.aligned_start(), seg.aligned_size(), seg.perm)?;
-            uc.mem_write(seg.aligned_start(), &seg.data)?; 
+            uc.mem_write(seg.aligned_start(), &seg.data)?;
         }
     }
-    Ok(uc)
+    Ok((uc, mem))
 }
 
 pub fn align_inst_addr(addr: u64, mode: Mode) -> u64 {
@@ -531,7 +530,7 @@ fn thumb_calc_sp_delta(_addr: u64) -> usize {
     0
 }
 
-#[derive(   Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
     Arm,
     Thumb,
@@ -543,20 +542,20 @@ pub enum Mode {
 }
 
 impl Mode {
-    pub fn as_uc(&self) -> unicorn::Mode {
+    pub fn as_uc(self) -> unicorn::Mode {
         match self {
-            &Mode::Arm => unicorn::Mode::LITTLE_ENDIAN,
-            &Mode::Thumb => unicorn::Mode::THUMB,
-            &Mode::Be => unicorn::Mode::BIG_ENDIAN,
-            &Mode::Le => unicorn::Mode::LITTLE_ENDIAN,
-            &Mode::Bits16 => unicorn::Mode::MODE_16,
-            &Mode::Bits32 => unicorn::Mode::MODE_32,
-            &Mode::Bits64 => unicorn::Mode::MODE_64,
+            Mode::Arm => unicorn::Mode::LITTLE_ENDIAN,
+            Mode::Thumb => unicorn::Mode::THUMB,
+            Mode::Be => unicorn::Mode::BIG_ENDIAN,
+            Mode::Le => unicorn::Mode::LITTLE_ENDIAN,
+            Mode::Bits16 => unicorn::Mode::MODE_16,
+            Mode::Bits32 => unicorn::Mode::MODE_32,
+            Mode::Bits64 => unicorn::Mode::MODE_64,
         }
     }
 }
 
-#[derive(   Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Arch {
     Arm(Mode),
     Mips(Mode),
@@ -564,26 +563,26 @@ pub enum Arch {
 }
 
 impl Arch {
-    pub fn as_uc(&self) -> (unicorn::Arch, unicorn::Mode) {
+    pub fn as_uc(self) -> (unicorn::Arch, unicorn::Mode) {
         match self {
-            &Arch::Arm(ref m) => (unicorn::Arch::ARM, m.as_uc()),
-            &Arch::Mips(ref m) => (unicorn::Arch::MIPS, m.as_uc()),
-            &Arch::X86(ref m) => (unicorn::Arch::X86, m.as_uc()),
+            Arch::Arm(ref m) => (unicorn::Arch::ARM, m.as_uc()),
+            Arch::Mips(ref m) => (unicorn::Arch::MIPS, m.as_uc()),
+            Arch::X86(ref m) => (unicorn::Arch::X86, m.as_uc()),
         }
     }
-    pub fn mode(&self) -> Mode {
+    pub fn mode(self) -> Mode {
         match self {
-            &Arch::Arm(ref m) => m.clone(),
-            &Arch::Mips(ref m) => m.clone(),
-            &Arch::X86(ref m) => m.clone(),
+            Arch::Arm(ref m) => *m,
+            Arch::Mips(ref m) => *m,
+            Arch::X86(ref m) => *m,
         }
     }
     /// Returns a new Arch enum with specified mode
-    pub fn with_mode(&self, mode: Mode) -> Arch {
+    pub fn with_mode(self, mode: Mode) -> Arch {
         match self {
-            &Arch::Arm(_) => Arch::Arm(mode),
-            &Arch::Mips(_) => Arch::Mips(mode),
-            &Arch::X86(_) => Arch::X86(mode),
+            Arch::Arm(_) => Arch::Arm(mode),
+            Arch::Mips(_) => Arch::Mips(mode),
+            Arch::X86(_) => Arch::X86(mode),
         }
     }
     //pub fn as_cs(&self) -> capstone::
@@ -603,7 +602,7 @@ pub fn umode_from_usize(x: usize) -> unicorn::Mode {
     }
 }
 
-#[derive(   Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum SegType {
     Null,
     Load,
@@ -636,9 +635,9 @@ impl SegType {
             _ => SegType::Other,
         }
     }
-    pub fn loadable(&self) -> bool {
+    pub fn loadable(self) -> bool {
         match self {
-            &SegType::Load => true,
+            SegType::Load => true,
             _ => false,
         }
     }
@@ -646,7 +645,7 @@ impl SegType {
 
 pub type Perm = unicorn::Protection;
 
-#[derive(   PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Seg {
     pub addr: u64,
     pub memsz: usize,
@@ -667,7 +666,7 @@ impl Seg {
     }
 
     pub fn from_phdr(phdr: &elf::ProgramHeader) -> Self {
-        let mut uc_perm = PROT_NONE;
+        let mut uc_perm = unicorn::Protection::NONE;
         if phdr.is_executable() {
             uc_perm |= PROT_EXEC
         };
@@ -717,7 +716,7 @@ impl Seg {
 }
 
 impl Display for Seg {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "[aligned {:08x} -- {:08x}: {:?}]",
@@ -728,10 +727,10 @@ impl Display for Seg {
     }
 }
 
-pub type MemImage = Vec<Seg>;
+pub type MemImage<'a> = Vec<Seg>;
 
 lazy_static! {
-    pub static ref MEM_IMAGE: MemImage
+    pub static ref MEM_IMAGE: MemImage<'static>
         = {
             let obj = Object::parse(&CODE_BUFFER).unwrap();
             let mut segs: Vec<Seg> = Vec::new();
@@ -840,7 +839,7 @@ pub fn read_static_mem(addr: u64, size: usize) -> Option<Vec<u8>> {
 
 #[test]
 fn test_engine_new() {
-    let emu = Engine::new(*ARCHITECTURE);
+    let _emu = Engine::new(*ARCHITECTURE);
 }
 
 #[test]
@@ -862,38 +861,72 @@ fn test_engine_reset() {
 
 #[test]
 fn stress_test_unicorn_cpu_arm() {
+    use rand::Rng;
     if let Arch::Arm(_) = *ARCHITECTURE {
         let mode = unicorn::Mode::LITTLE_ENDIAN;
-        let mut uc = CpuARM::new(mode).expect("Failed to create CpuARM");
+        let uc = CpuARM::new(mode).expect("Failed to create CpuARM");
         let mem_image: MemImage = MEM_IMAGE.to_vec();
         for seg in mem_image {
             uc.mem_map(seg.aligned_start(), seg.aligned_size(), seg.perm)
                 .unwrap();
             uc.mem_write(seg.aligned_start(), &seg.data).unwrap();
         }
-        let mut rng = thread_rng();
-        for i in 0..1000000 {
+        let mut rng = rand::thread_rng();
+        for _i in 0..1000000 {
             //println!("{}",i);
-            uc.emu_start(0x8000 + rng.gen::<u64>() % 0x30000, 0, 0, 1024);
+            let address = 0x8000 + rng.gen::<u64>() % 0x30000;
+            match uc.emu_start(address, 0, 0, 1024) {
+                Ok(_) => (),
+                Err(e) => println!("Unicorn emu_start error @ 0x{:x}: {}", address, e.msg()),
+            }
+        }
+    }
+}
+
+#[test]
+fn stress_test_unicorn_cpu_mips() {
+    use rand::Rng;
+    if let Arch::Mips(_) = *ARCHITECTURE {
+        let mode = unicorn::Mode::BIG_ENDIAN;
+        let uc = CpuMIPS::new(mode).expect("Failed to create CpuMIPS");
+        let mem_image: MemImage = MEM_IMAGE.to_vec();
+        for seg in mem_image {
+            uc.mem_map(seg.aligned_start(), seg.aligned_size(), seg.perm)
+                .unwrap();
+            uc.mem_write(seg.aligned_start(), &seg.data).unwrap();
+        }
+        let mut rng = rand::thread_rng();
+        for _i in 0..1000000 {
+            //println!("{}",i);
+            let address = 0x8000 + rng.gen::<u64>() % 0x30000;
+            match uc.emu_start(address, 0, 0, 1024) {
+                Ok(_) => (),
+                Err(e) => println!("Unicorn emu_start error @ 0x{:x}: {}", address, e.msg()),
+            }
         }
     }
 }
 
 #[test]
 fn stress_test_unicorn_cpu_x86_64() {
+    use rand::Rng;
     if let Arch::X86(_) = *ARCHITECTURE {
         let mode = unicorn::Mode::MODE_64;
-        let mut uc = CpuX86::new(mode).expect("Failed to create CpuX86");
+        let uc = CpuX86::new(mode).expect("Failed to create CpuX86");
         let mem_image: MemImage = MEM_IMAGE.to_vec();
         for seg in mem_image {
             uc.mem_map(seg.aligned_start(), seg.aligned_size(), seg.perm)
                 .unwrap();
             uc.mem_write(seg.aligned_start(), &seg.data).unwrap();
         }
-        let mut rng = thread_rng();
-        for i in 0..1000000 {
+        let mut rng = rand::thread_rng();
+        for _i in 0..1000000 {
             //println!("{}",i);
-            uc.emu_start(0x8000 + rng.gen::<u64>() % 0x30000, 0, 0, 1024);
+            let address = 0x8000 + rng.gen::<u64>() % 0x30000;
+            match uc.emu_start(address, 0, 0, 1024) {
+                Ok(_) => (),
+                Err(e) => println!("Unicorn emu_start error @ 0x{:x}: {}", address, e.msg()),
+            }
         }
     }
 }
@@ -978,20 +1011,20 @@ pub const ARM_THUMB: Arch = Arch::Arm(Mode::Thumb);
 pub const STACK_SIZE: usize = 0x1000;
 pub const UNINITIALIZED_BYTE: u8 = 0x00;
 
-pub const PROT_READ: Perm = unicorn::PROT_READ;
-pub const PROT_EXEC: Perm = unicorn::PROT_EXEC;
-pub const PROT_WRITE: Perm = unicorn::PROT_WRITE;
+pub const PROT_READ: Perm = unicorn::Protection::READ;
+pub const PROT_EXEC: Perm = unicorn::Protection::EXEC;
+pub const PROT_WRITE: Perm = unicorn::Protection::WRITE;
 pub const X86_RET: u8 = 0xC3;
 
-fn x86_ret(b: &Vec<u8>) -> bool {
+fn x86_ret(b: &[u8]) -> bool {
     b[0] == X86_RET
 }
 /* An ARM return is a pop with PC as one of the destination registers */
-fn arm_ret(w: &Vec<u8>) -> bool {
-    w[3] & 0x0E == 0x06 && 
+fn arm_ret(w: &[u8]) -> bool {
+    w[3] & 0x0E == 0x06 &&
     w[0] & 0x10 == 0x10 && /* The instruction is a pop instruction, */
     w[1] & 0x80 == 0x80 /* and R15 is a destination register     */
 }
-fn thumb_ret(w: &Vec<u8>) -> bool {
+fn thumb_ret(w: &[u8]) -> bool {
     w[0] & 0xF6 == 0xB4 && w[0] & 1 == 1
 }

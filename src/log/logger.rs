@@ -1,24 +1,21 @@
-use std::thread::{spawn, JoinHandle};
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::{Arc, RwLock};
+use std::thread::{spawn, JoinHandle};
 
-use gen::{Creature,FitnessOps};
-use fit::CircBuf;
-use par::statics::*;
+use crate::fit::CircBuf;
+use crate::gen::{Creature, FitnessOps};
+use crate::par::statics::*;
 
 /* the statistical functions can be defined as methods on
- * CircBuf
+* CircBuf
 
- */
+*/
 
 /* just print to stdout for now, we'll do the file bit later */
-fn log_stats(stats: &Vec<(&'static str, f32)>) -> ()
-{
+fn log_stats(stats: &[(&'static str, f32)]) {
     let mut row = String::new();
     let num_stats = stats.len();
-    let mut counter = 0;
-    for (_name, stat) in stats.iter() {
-        counter += 1;
+    for (counter, (_name, stat)) in stats.iter().enumerate() {
         row.push_str(&format!("{:6.6}", stat));
         if counter < num_stats {
             row.push_str("\t")
@@ -26,43 +23,40 @@ fn log_stats(stats: &Vec<(&'static str, f32)>) -> ()
             row.push_str("\n")
         }
     }
-    print!("{}",row)
+    print!("{}", row)
 }
 /* the point of passing a vector of pairs each time is just to make
-   the logging code easier to read and maintain. The alternative is to
-   pass the headers, explicitly, at the beginning, and then an unlabelled
-   sequence of floats every subsequent time.
- */
-fn log_header(stats: &Vec<(&'static str, f32)>) -> ()
-{
+  the logging code easier to read and maintain. The alternative is to
+  pass the headers, explicitly, at the beginning, and then an unlabelled
+  sequence of floats every subsequent time.
+*/
+fn log_header(stats: &[(&'static str, f32)]) {
     let mut row = String::new();
     let num_stats = stats.len();
-    let mut counter = 0;
-    for (name, _stat) in stats.iter() {
-        counter += 1;
-        row.push_str(&format!("{}", name));
+    for (counter, (name, _stat)) in stats.iter().enumerate() {
+        row.push_str(&name.to_string());
         if counter < num_stats {
             row.push_str("\t")
         } else {
             row.push_str("\n")
         }
     }
-    print!("{}",row)
+    print!("{}", row)
 }
 
-fn log(stats: &Vec<(&'static str, f32)>, counter: usize) -> () {
+fn log(stats: &[(&'static str, f32)], counter: usize) {
     if counter == 0 {
         log_header(&stats)
     };
     log_stats(&stats)
 }
 
-
-
-
 /// The logger sits at the receiving end of a one-way channel.
 /// It's best to send cloned data to it, since you won't get it back.
-pub fn spawn_logger(circbuf_size: usize, log_freq: usize) -> (SyncSender<Creature>, JoinHandle<()>) {
+pub fn spawn_logger(
+    circbuf_size: usize,
+    log_freq: usize,
+) -> (SyncSender<Creature>, JoinHandle<()>) {
     println!("Logger spawned. Send clones!");
     let (log_tx, log_rx) = sync_channel(*CHANNEL_SIZE * 10);
 
@@ -74,8 +68,7 @@ pub fn spawn_logger(circbuf_size: usize, log_freq: usize) -> (SyncSender<Creatur
     let _stat_handle = spawn(move || {
         let mut max_fitness = 0.0;
         let mut max_gen = 0;
-        let mut log_counter = 0;
-        for _ in analyse_rx {
+        for (log_counter, _) in analyse_rx.into_iter().enumerate() {
             let window = window.read().unwrap();
             /* TODO here is where the analyses will be dispatched from */
             //println!("circbuf holds {}", window.buf.len());
@@ -85,9 +78,9 @@ pub fn spawn_logger(circbuf_size: usize, log_freq: usize) -> (SyncSender<Creatur
             let mut count = 0;
             for creature in window.buf.iter() {
                 assert!(creature.has_hatched());
-                match &creature.fitness {
-                    &None => panic!("-- creature with no fitness in logger"),
-                    &Some (ref fvec) => {
+                match creature.fitness {
+                    None => panic!("-- creature with no fitness in logger"),
+                    Some(ref fvec) => {
                         count += 1;
                         let fit = fvec.mean() as f32;
                         if fit > max_fitness {
@@ -96,31 +89,35 @@ pub fn spawn_logger(circbuf_size: usize, log_freq: usize) -> (SyncSender<Creatur
                         };
                         sum_fit += fit;
                         let gen = creature.generation();
-                        if gen > max_gen { max_gen = gen };
+                        if gen > max_gen {
+                            max_gen = gen
+                        };
                         sum_gen += gen as f32;
                         let len = creature.genome.len();
                         sum_len += len;
-                    },
+                    }
                 }
             }
             let mean_fitness = sum_fit / count as f32;
             let mean_gen = sum_gen / count as f32;
             let mean_len = sum_len as f32 / count as f32;
-            log(&vec![
-                ("MAX-GEN", max_gen as f32),
-                ("MEAN-GEN", mean_gen),
-                ("MEAN-FIT", mean_fitness),
-                ("MAX-FIT", max_fitness),
-                ("MEAN-LEN", mean_len),
-            ], log_counter);
-            log_counter += 1;
-      //      println!("[LOGGER] max gen: {}, mean gen: {:4.4}, mean fitness: {:1.5}, max fitness: {}, mean length: {}", max_gen, mean_gen, mean_fitness, max_fit, mean_len);
+            log(
+                &[
+                    ("MAX-GEN", max_gen as f32),
+                    ("MEAN-GEN", mean_gen),
+                    ("MEAN-FIT", mean_fitness),
+                    ("MAX-FIT", max_fitness),
+                    ("MEAN-LEN", mean_len),
+                ],
+                log_counter,
+            );
+            //      println!("[LOGGER] max gen: {}, mean gen: {:4.4}, mean fitness: {:1.5}, max fitness: {}, mean length: {}", max_gen, mean_gen, mean_fitness, max_fit, mean_len);
             //sleep(Duration::from_millis(1000));
         }
     });
 
     let analysis_period = log_freq as u64;
-    let received = circbuf.clone();
+    let received = circbuf;
     let handle = spawn(move || {
         let mut count: u64 = 0;
         for incoming in log_rx {
