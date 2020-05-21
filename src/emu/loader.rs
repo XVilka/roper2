@@ -1012,7 +1012,7 @@ pub static X86_64_REGISTERS: [RegisterX86; 17] = [
     RegisterX86::EFLAGS,
 ];
 
-pub static X86_32_REGISTERS: [RegisterX86; 10] = [
+pub static X86_32_REGISTERS: [RegisterX86; 16] = [
     RegisterX86::EAX,
     RegisterX86::EBX,
     RegisterX86::ECX,
@@ -1023,6 +1023,12 @@ pub static X86_32_REGISTERS: [RegisterX86; 10] = [
     RegisterX86::ESP,
     RegisterX86::EIP,
     RegisterX86::EFLAGS,
+    RegisterX86::CS,
+    RegisterX86::DS,
+    RegisterX86::ES,
+    RegisterX86::FS,
+    RegisterX86::GS,
+    RegisterX86::SS,
 ];
 
 pub const ARM_ARM: Arch = Arch::Arm(Mode::Arm);
