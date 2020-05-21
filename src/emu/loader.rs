@@ -22,6 +22,7 @@ impl<'a> Engine<'a> {
             Arch::Arm(_) => regids(&ARM_REGISTERS),
             Arch::Mips(_) => regids(&MIPS_REGISTERS),
             Arch::X86(Mode::Bits64) => regids(&X86_64_REGISTERS),
+            Arch::X86(Mode::Bits32) => regids(&X86_32_REGISTERS),
             _ => unreachable!("Not implemented"),
         };
         let mut emu = Engine {
@@ -142,6 +143,10 @@ impl<'a> Engine<'a> {
             }
             Arch::X86(Mode::Bits64) => {
                 let sp = RegisterX86::RSP as i32;
+                self.uc.reg_write(sp, val)
+            }
+            Arch::X86(Mode::Bits32) => {
+                let sp = RegisterX86::ESP as i32;
                 self.uc.reg_write(sp, val)
             }
             _ => unreachable!("Not implemented"),
@@ -400,6 +405,7 @@ pub fn uc_general_registers(uc: &Unicorn) -> Result<Vec<u64>, unicorn::Error> {
         Arch::Arm(_) => regids(&ARM_REGISTERS),
         Arch::Mips(_) => regids(&MIPS_REGISTERS),
         Arch::X86(Mode::Bits64) => regids(&X86_64_REGISTERS),
+        Arch::X86(Mode::Bits32) => regids(&X86_32_REGISTERS),
         _ => unreachable!("Not implemented"),
     };
     Ok(regids
@@ -1004,6 +1010,25 @@ pub static X86_64_REGISTERS: [RegisterX86; 17] = [
     RegisterX86::RSP,
     RegisterX86::RIP,
     RegisterX86::EFLAGS,
+];
+
+pub static X86_32_REGISTERS: [RegisterX86; 16] = [
+    RegisterX86::EAX,
+    RegisterX86::EBX,
+    RegisterX86::ECX,
+    RegisterX86::EDX,
+    RegisterX86::EDI,
+    RegisterX86::ESI,
+    RegisterX86::EBP,
+    RegisterX86::ESP,
+    RegisterX86::EIP,
+    RegisterX86::EFLAGS,
+    RegisterX86::CS,
+    RegisterX86::DS,
+    RegisterX86::ES,
+    RegisterX86::FS,
+    RegisterX86::GS,
+    RegisterX86::SS,
 ];
 
 pub const ARM_ARM: Arch = Arch::Arm(Mode::Arm);
