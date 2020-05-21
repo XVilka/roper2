@@ -6,17 +6,31 @@ use crate::emu::loader::{Arch, Mode};
 use crate::par::statics::ARCHITECTURE;
 
 #[inline]
-pub fn x86_disassembler() -> &'static Capstone {
+pub fn x86_64_disassembler() -> &'static Capstone {
     thread_local! {
-        pub static X86_DISASSEMBLER: &'static Capstone = Box::leak(Box::new(
+        pub static X86_64_DISASSEMBLER: &'static Capstone = Box::leak(Box::new(
             Capstone::new()
                     .x86()
                     .mode(arch::x86::ArchMode::Mode64)
                     .build()
-                    .expect("Failed to initialize X86_DISASSEMBLER")
+                    .expect("Failed to initialize X86_64_DISASSEMBLER")
         ));
     }
-    X86_DISASSEMBLER.with(|&x| x) // Copy the 'static Capstone
+    X86_64_DISASSEMBLER.with(|&x| x) // Copy the 'static Capstone
+}
+
+#[inline]
+pub fn x86_32_disassembler() -> &'static Capstone {
+    thread_local! {
+        pub static X86_32_DISASSEMBLER: &'static Capstone = Box::leak(Box::new(
+            Capstone::new()
+                    .x86()
+                    .mode(arch::x86::ArchMode::Mode32)
+                    .build()
+                    .expect("Failed to initialize X86_32_DISASSEMBLER")
+        ));
+    }
+    X86_32_DISASSEMBLER.with(|&x| x) // Copy the 'static Capstone
 }
 
 #[inline]
@@ -51,7 +65,8 @@ pub fn disas(insts: &[u8], mode: Mode, num_insts: usize) -> String {
     let arch = ARCHITECTURE.with_mode(mode);
 
     let cs = match arch {
-        Arch::X86(Mode::Bits64) => x86_disassembler(),
+        Arch::X86(Mode::Bits64) => x86_64_disassembler(),
+        Arch::X86(Mode::Bits32) => x86_32_disassembler(),
         Arch::Arm(Mode::Arm) => arm_disassembler(),
         Arch::Arm(Mode::Thumb) => thumb_disassembler(),
         _ => panic!("not yet implemented"),
