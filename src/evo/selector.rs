@@ -215,7 +215,7 @@ fn tournament(selection_window: &mut Vec<Creature>, seed: RngSeed) -> Vec<Creatu
 
     /* I think I need to have the selection window consist of refcells of creatures,
     instead of just naked creatures */
- /* FIXME */
+    /* FIXME */
     let mut offspring;
     {
         let mother = &selection_window[p0];
