@@ -89,7 +89,8 @@ lazy_static! {
 lazy_static! {
     pub static ref ADDR_WIDTH: usize = {
         match *ARCHITECTURE {
-            Arch::X86(_) => 8,
+            Arch::X86(Mode::Bits64) => 8,
+            Arch::X86(Mode::Bits32) => 4,
             _ => 4,
         }
     };
